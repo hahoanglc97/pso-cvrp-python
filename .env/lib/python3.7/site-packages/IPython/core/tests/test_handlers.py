@@ -10,15 +10,12 @@ import nose.tools as nt
 # our own packages
 from IPython.core import autocall
 from IPython.testing import tools as tt
-from IPython.testing.globalipapp import get_ipython
-from IPython.utils import py3compat
 
 #-----------------------------------------------------------------------------
 # Globals
 #-----------------------------------------------------------------------------
 
 # Get the public instance of IPython
-ip = get_ipython()
 
 failures = []
 num_tests = 0
@@ -51,11 +48,11 @@ def test_handlers():
     # For many of the below, we're also checking that leading whitespace
     # turns off the esc char, which it should unless there is a continuation
     # line.
-    run([(i,py3compat.u_format(o)) for i,o in \
+    run(
         [('"no change"', '"no change"'),             # normal
-         (u"lsmagic",     "get_ipython().magic({u}'lsmagic ')"),   # magic
+         (u"lsmagic",     "get_ipython().run_line_magic('lsmagic', '')"),   # magic
          #("a = b # PYTHON-MODE", '_i'),          # emacs -- avoids _in cache
-         ]])
+         ])
 
     # Objects which are instances of IPyAutocall are *always* autocalled
     autocallable = Autocallable()

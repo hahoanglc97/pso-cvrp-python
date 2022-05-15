@@ -1,24 +1,24 @@
 """
-`GrammarLexer` is compatible with Pygments lexers and can be used to highlight
-the input using a regular grammar with token annotations.
+`GrammarLexer` is compatible with other lexers and can be used to highlight
+the input using a regular grammar with annotations.
 """
-from __future__ import unicode_literals
+from typing import Callable, Dict, Optional
+
 from prompt_toolkit.document import Document
-from prompt_toolkit.layout.lexers import Lexer
-from prompt_toolkit.layout.utils import split_lines
-from prompt_toolkit.token import Token
+from prompt_toolkit.formatted_text.base import StyleAndTextTuples
+from prompt_toolkit.formatted_text.utils import split_lines
+from prompt_toolkit.lexers import Lexer
 
 from .compiler import _CompiledGrammar
-from six.moves import range
 
-__all__ = (
-    'GrammarLexer',
-)
+__all__ = [
+    "GrammarLexer",
+]
 
 
 class GrammarLexer(Lexer):
     """
-    Lexer which can be used for highlighting of tokens according to variables in the grammar.
+    Lexer which can be used for highlighting of fragments according to variables in the grammar.
 
     (It does not actual lexing of the string, but it exposes an API, compatible
     with the Pygments lexer class.)
@@ -27,24 +27,26 @@ class GrammarLexer(Lexer):
     :param lexers: Dictionary mapping variable names of the regular grammar to
                    the lexers that should be used for this part. (This can
                    call other lexers recursively.) If you wish a part of the
-                   grammar to just get one token, use a
-                   `prompt_toolkit.layout.lexers.SimpleLexer`.
+                   grammar to just get one fragment, use a
+                   `prompt_toolkit.lexers.SimpleLexer`.
     """
-    def __init__(self, compiled_grammar, default_token=None, lexers=None):
-        assert isinstance(compiled_grammar, _CompiledGrammar)
-        assert default_token is None or isinstance(default_token, tuple)
-        assert lexers is None or all(isinstance(v, Lexer) for k, v in lexers.items())
-        assert lexers is None or isinstance(lexers, dict)
+
+    def __init__(
+        self,
+        compiled_grammar: _CompiledGrammar,
+        default_style: str = "",
+        lexers: Optional[Dict[str, Lexer]] = None,
+    ) -> None:
 
         self.compiled_grammar = compiled_grammar
-        self.default_token = default_token or Token
+        self.default_style = default_style
         self.lexers = lexers or {}
 
-    def _get_tokens(self, cli, text):
+    def _get_text_fragments(self, text: str) -> StyleAndTextTuples:
         m = self.compiled_grammar.match_prefix(text)
 
         if m:
-            characters = [[self.default_token, c] for c in text]
+            characters: StyleAndTextTuples = [(self.default_style, c) for c in text]
 
             for v in m.variables():
                 # If we have a `Lexer` instance for this part of the input.
@@ -52,36 +54,36 @@ class GrammarLexer(Lexer):
                 lexer = self.lexers.get(v.varname)
 
                 if lexer:
-                    document = Document(text[v.start:v.stop])
-                    lexer_tokens_for_line = lexer.lex_document(cli, document)
-                    lexer_tokens = []
+                    document = Document(text[v.start : v.stop])
+                    lexer_tokens_for_line = lexer.lex_document(document)
+                    text_fragments: StyleAndTextTuples = []
                     for i in range(len(document.lines)):
-                        lexer_tokens.extend(lexer_tokens_for_line(i))
-                        lexer_tokens.append((Token, '\n'))
-                    if lexer_tokens:
-                        lexer_tokens.pop()
+                        text_fragments.extend(lexer_tokens_for_line(i))
+                        text_fragments.append(("", "\n"))
+                    if text_fragments:
+                        text_fragments.pop()
 
                     i = v.start
-                    for t, s in lexer_tokens:
+                    for t, s, *_ in text_fragments:
                         for c in s:
-                            if characters[i][0] == self.default_token:
-                                characters[i][0] = t
+                            if characters[i][0] == self.default_style:
+                                characters[i] = (t, characters[i][1])
                             i += 1
 
             # Highlight trailing input.
             trailing_input = m.trailing_input()
             if trailing_input:
                 for i in range(trailing_input.start, trailing_input.stop):
-                    characters[i][0] = Token.TrailingInput
+                    characters[i] = ("class:trailing-input", characters[i][1])
 
             return characters
         else:
-            return [(Token, text)]
+            return [("", text)]
 
-    def lex_document(self, cli, document):
-        lines = list(split_lines(self._get_tokens(cli, document.text)))
+    def lex_document(self, document: Document) -> Callable[[int], StyleAndTextTuples]:
+        lines = list(split_lines(self._get_text_fragments(document.text)))
 
-        def get_line(lineno):
+        def get_line(lineno: int) -> StyleAndTextTuples:
             try:
                 return lines[lineno]
             except IndexError:

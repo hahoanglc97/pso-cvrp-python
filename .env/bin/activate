@@ -37,7 +37,7 @@ deactivate () {
 # unset irrelevant variables
 deactivate nondestructive
 
-VIRTUAL_ENV="/Users/sonhoang/Project/seminar_1/Final-pso-cvrp/.env"
+VIRTUAL_ENV="/home/hahoang/Project/seminar/pso-cvrp-python/.env"
 export VIRTUAL_ENV
 
 _OLD_VIRTUAL_PATH="$PATH"

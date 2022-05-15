@@ -5,34 +5,26 @@ This are separate bindings, because GNU readline doesn't have them, but
 they are very useful for navigating through long multiline buffers, like in
 Vi, Emacs, etc...
 """
-from __future__ import unicode_literals
+from prompt_toolkit.key_binding.key_processor import KeyPressEvent
 
-from prompt_toolkit.layout.utils import find_window_for_buffer_name
-from six.moves import range
+__all__ = [
+    "scroll_forward",
+    "scroll_backward",
+    "scroll_half_page_up",
+    "scroll_half_page_down",
+    "scroll_one_line_up",
+    "scroll_one_line_down",
+]
 
-__all__ = (
-    'scroll_forward',
-    'scroll_backward',
-    'scroll_half_page_up',
-    'scroll_half_page_down',
-    'scroll_one_line_up',
-    'scroll_one_line_down',
-)
-
-
-def _current_window_for_event(event):
-    """
-    Return the `Window` for the currently focussed Buffer.
-    """
-    return find_window_for_buffer_name(event.cli, event.cli.current_buffer_name)
+E = KeyPressEvent
 
 
-def scroll_forward(event, half=False):
+def scroll_forward(event: E, half: bool = False) -> None:
     """
     Scroll window down.
     """
-    w = _current_window_for_event(event)
-    b = event.cli.current_buffer
+    w = event.app.layout.current_window
+    b = event.app.current_buffer
 
     if w and w.render_info:
         info = w.render_info
@@ -58,12 +50,12 @@ def scroll_forward(event, half=False):
         b.cursor_position = b.document.translate_row_col_to_index(y, 0)
 
 
-def scroll_backward(event, half=False):
+def scroll_backward(event: E, half: bool = False) -> None:
     """
     Scroll window up.
     """
-    w = _current_window_for_event(event)
-    b = event.cli.current_buffer
+    w = event.app.layout.current_window
+    b = event.app.current_buffer
 
     if w and w.render_info:
         info = w.render_info
@@ -88,26 +80,26 @@ def scroll_backward(event, half=False):
         b.cursor_position = b.document.translate_row_col_to_index(y, 0)
 
 
-def scroll_half_page_down(event):
+def scroll_half_page_down(event: E) -> None:
     """
     Same as ControlF, but only scroll half a page.
     """
     scroll_forward(event, half=True)
 
 
-def scroll_half_page_up(event):
+def scroll_half_page_up(event: E) -> None:
     """
     Same as ControlB, but only scroll half a page.
     """
     scroll_backward(event, half=True)
 
 
-def scroll_one_line_down(event):
+def scroll_one_line_down(event: E) -> None:
     """
     scroll_offset += 1
     """
-    w = find_window_for_buffer_name(event.cli, event.cli.current_buffer_name)
-    b = event.cli.current_buffer
+    w = event.app.layout.current_window
+    b = event.app.current_buffer
 
     if w:
         # When the cursor is at the top, move to the next line. (Otherwise, only scroll.)
@@ -121,12 +113,12 @@ def scroll_one_line_down(event):
                 w.vertical_scroll += 1
 
 
-def scroll_one_line_up(event):
+def scroll_one_line_up(event: E) -> None:
     """
     scroll_offset -= 1
     """
-    w = find_window_for_buffer_name(event.cli, event.cli.current_buffer_name)
-    b = event.cli.current_buffer
+    w = event.app.layout.current_window
+    b = event.app.current_buffer
 
     if w:
         # When the cursor is at the bottom, move to the previous line. (Otherwise, only scroll.)
@@ -136,8 +128,12 @@ def scroll_one_line_up(event):
             if w.vertical_scroll > 0:
                 first_line_height = info.get_height_for_line(info.first_visible_line())
 
-                cursor_up = info.cursor_position.y - (info.window_height - 1 - first_line_height -
-                                                      info.configured_scroll_offsets.bottom)
+                cursor_up = info.cursor_position.y - (
+                    info.window_height
+                    - 1
+                    - first_line_height
+                    - info.configured_scroll_offsets.bottom
+                )
 
                 # Move cursor up, as many steps as the height of the first line.
                 # TODO: not entirely correct yet, in case of line wrapping and many long lines.
@@ -148,12 +144,12 @@ def scroll_one_line_up(event):
                 w.vertical_scroll -= 1
 
 
-def scroll_page_down(event):
+def scroll_page_down(event: E) -> None:
     """
     Scroll page down. (Prefer the cursor at the top of the page, after scrolling.)
     """
-    w = _current_window_for_event(event)
-    b = event.cli.current_buffer
+    w = event.app.layout.current_window
+    b = event.app.current_buffer
 
     if w and w.render_info:
         # Scroll down one page.
@@ -161,24 +157,30 @@ def scroll_page_down(event):
         w.vertical_scroll = line_index
 
         b.cursor_position = b.document.translate_row_col_to_index(line_index, 0)
-        b.cursor_position += b.document.get_start_of_line_position(after_whitespace=True)
+        b.cursor_position += b.document.get_start_of_line_position(
+            after_whitespace=True
+        )
 
 
-def scroll_page_up(event):
+def scroll_page_up(event: E) -> None:
     """
     Scroll page up. (Prefer the cursor at the bottom of the page, after scrolling.)
     """
-    w = _current_window_for_event(event)
-    b = event.cli.current_buffer
+    w = event.app.layout.current_window
+    b = event.app.current_buffer
 
     if w and w.render_info:
         # Put cursor at the first visible line. (But make sure that the cursor
         # moves at least one line up.)
-        line_index = max(0, min(w.render_info.first_visible_line(),
-                                b.document.cursor_position_row - 1))
+        line_index = max(
+            0,
+            min(w.render_info.first_visible_line(), b.document.cursor_position_row - 1),
+        )
 
         b.cursor_position = b.document.translate_row_col_to_index(line_index, 0)
-        b.cursor_position += b.document.get_start_of_line_position(after_whitespace=True)
+        b.cursor_position += b.document.get_start_of_line_position(
+            after_whitespace=True
+        )
 
         # Set the scroll offset. We can safely set it to zero; the Window will
         # make sure that it scrolls at least until the cursor becomes visible.

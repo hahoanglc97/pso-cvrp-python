@@ -1,6 +1,5 @@
 """Tests for the decorators we've created for IPython.
 """
-from __future__ import print_function
 
 # Module imports
 # Std lib
@@ -47,7 +46,7 @@ def trivial():
     pass
 
 
-@dec.skip
+@dec.skip()
 def test_deliberately_broken():
     """A deliberately broken test - we want to skip this one."""
     1/0

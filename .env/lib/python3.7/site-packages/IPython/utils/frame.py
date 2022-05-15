@@ -2,7 +2,6 @@
 """
 Utilities for working with stack frames.
 """
-from __future__ import print_function
 
 #-----------------------------------------------------------------------------
 #  Copyright (C) 2008-2011  The IPython Development Team
@@ -16,13 +15,11 @@ from __future__ import print_function
 #-----------------------------------------------------------------------------
 
 import sys
-from IPython.utils import py3compat
 
 #-----------------------------------------------------------------------------
 # Code
 #-----------------------------------------------------------------------------
 
-@py3compat.doctest_refactor_print
 def extract_vars(*names,**kw):
     """Extract a set of variables by name from another frame.
 
@@ -51,7 +48,7 @@ def extract_vars(*names,**kw):
     """
 
     depth = kw.get('depth',0)
-    
+
     callerNS = sys._getframe(depth+1).f_locals
     return dict((k,callerNS[k]) for k in names)
 
@@ -60,7 +57,7 @@ def extract_vars_above(*names):
     """Extract a set of variables by name from another frame.
 
     Similar to extractVars(), but with a specified depth of 1, so that names
-    are exctracted exactly from above the caller.
+    are extracted exactly from above the caller.
 
     This is simply a convenience function so that the very common case (for us)
     of skipping exactly 1 frame doesn't have to construct a special dict for
@@ -95,4 +92,3 @@ def extract_module_locals(depth=0):
     global_ns = f.f_globals
     module = sys.modules[global_ns['__name__']]
     return (module, f.f_locals)
-

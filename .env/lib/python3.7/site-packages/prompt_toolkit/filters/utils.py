@@ -1,39 +1,41 @@
-from __future__ import unicode_literals
-from .base import Always, Never
-from .types import SimpleFilter, CLIFilter
+from typing import Dict
 
-__all__ = (
-    'to_cli_filter',
-    'to_simple_filter',
-)
+from .base import Always, Filter, FilterOrBool, Never
+
+__all__ = [
+    "to_filter",
+    "is_true",
+]
+
 
 _always = Always()
 _never = Never()
 
 
-def to_simple_filter(bool_or_filter):
-    """
-    Accept both booleans and CLIFilters as input and
-    turn it into a SimpleFilter.
-    """
-    if not isinstance(bool_or_filter, (bool, SimpleFilter)):
-        raise TypeError('Expecting a bool or a SimpleFilter instance. Got %r' % bool_or_filter)
-
-    return {
-        True: _always,
-        False: _never,
-    }.get(bool_or_filter, bool_or_filter)
+_bool_to_filter: Dict[bool, Filter] = {
+    True: _always,
+    False: _never,
+}
 
 
-def to_cli_filter(bool_or_filter):
+def to_filter(bool_or_filter: FilterOrBool) -> Filter:
     """
-    Accept both booleans and CLIFilters as input and
-    turn it into a CLIFilter.
+    Accept both booleans and Filters as input and
+    turn it into a Filter.
     """
-    if not isinstance(bool_or_filter, (bool, CLIFilter)):
-        raise TypeError('Expecting a bool or a CLIFilter instance. Got %r' % bool_or_filter)
+    if isinstance(bool_or_filter, bool):
+        return _bool_to_filter[bool_or_filter]
 
-    return {
-        True: _always,
-        False: _never,
-    }.get(bool_or_filter, bool_or_filter)
+    if isinstance(bool_or_filter, Filter):
+        return bool_or_filter
+
+    raise TypeError("Expecting a bool or a Filter instance. Got %r" % bool_or_filter)
+
+
+def is_true(value: FilterOrBool) -> bool:
+    """
+    Test whether `value` is True. In case of a Filter, call it.
+
+    :param value: Boolean or `Filter` instance.
+    """
+    return to_filter(value)()

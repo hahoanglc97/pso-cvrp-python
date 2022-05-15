@@ -1,29 +1,54 @@
-from __future__ import unicode_literals
-
-from itertools import product
 from collections import defaultdict
+from typing import TYPE_CHECKING, Callable, DefaultDict
 
-__all__ = (
-    'MouseHandlers',
-)
+from prompt_toolkit.mouse_events import MouseEvent
+
+if TYPE_CHECKING:
+    from prompt_toolkit.key_binding.key_bindings import NotImplementedOrNone
+
+__all__ = [
+    "MouseHandler",
+    "MouseHandlers",
+]
 
 
-class MouseHandlers(object):
+MouseHandler = Callable[[MouseEvent], "NotImplementedOrNone"]
+
+
+class MouseHandlers:
     """
-    Two dimentional raster of callbacks for mouse events.
+    Two dimensional raster of callbacks for mouse events.
     """
-    def __init__(self):
-        def dummy_callback(cli, mouse_event):
+
+    def __init__(self) -> None:
+        def dummy_callback(mouse_event: MouseEvent) -> "NotImplementedOrNone":
             """
             :param mouse_event: `MouseEvent` instance.
             """
+            return NotImplemented
 
-        # Map (x,y) tuples to handlers.
-        self.mouse_handlers = defaultdict(lambda: dummy_callback)
+        # NOTE: Previously, the data structure was a dictionary mapping (x,y)
+        # to the handlers. This however would be more inefficient when copying
+        # over the mouse handlers of the visible region in the scrollable pane.
 
-    def set_mouse_handler_for_range(self, x_min, x_max, y_min, y_max, handler=None):
+        # Map y (row) to x (column) to handlers.
+        self.mouse_handlers: DefaultDict[
+            int, DefaultDict[int, MouseHandler]
+        ] = defaultdict(lambda: defaultdict(lambda: dummy_callback))
+
+    def set_mouse_handler_for_range(
+        self,
+        x_min: int,
+        x_max: int,
+        y_min: int,
+        y_max: int,
+        handler: Callable[[MouseEvent], "NotImplementedOrNone"],
+    ) -> None:
         """
         Set mouse handler for a region.
         """
-        for x, y in product(range(x_min, x_max), range(y_min, y_max)):
-            self.mouse_handlers[x,y] = handler
+        for y in range(y_min, y_max):
+            row = self.mouse_handlers[y]
+
+            for x in range(x_min, x_max):
+                row[x] = handler

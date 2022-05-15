@@ -29,7 +29,7 @@ end
 # unset irrelevant variables
 deactivate nondestructive
 
-set -gx VIRTUAL_ENV "/Users/sonhoang/Project/seminar_1/Final-pso-cvrp/.env"
+set -gx VIRTUAL_ENV "/home/hahoang/Project/seminar/pso-cvrp-python/.env"
 
 set -gx _OLD_VIRTUAL_PATH $PATH
 set -gx PATH "$VIRTUAL_ENV/bin" $PATH

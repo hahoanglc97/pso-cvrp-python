@@ -10,14 +10,10 @@ This file is meant to be used by process.py
 #  the file COPYING, distributed as part of this software.
 #-----------------------------------------------------------------------------
 
-from __future__ import print_function
 
 # stdlib
 import os, sys, threading
 import ctypes, msvcrt
-
-# local imports
-from . import py3compat
 
 # Win32 API types needed for the API calls
 from ctypes import POINTER
@@ -174,7 +170,7 @@ class AvoidUNCPath(object):
             os.system(cmd)
     """
     def __enter__(self):
-        self.path = py3compat.getcwd()
+        self.path = os.getcwd()
         self.is_unc_path = self.path.startswith(r"\\")
         if self.is_unc_path:
             # change to c drive (as cmd.exe cannot handle UNC addresses)

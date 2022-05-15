@@ -19,15 +19,14 @@ from multiprocessing import Process
 try:
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", DeprecationWarning)
-        import paramiko  # type: ignore
+        import paramiko
 
         SSHException = paramiko.ssh_exception.SSHException
 except ImportError:
-    paramiko = None  # type: ignore
+    paramiko = None  # type:ignore[assignment]
 
     class SSHException(Exception):  # type: ignore
         pass
-
 
 else:
     from .forward import forward_tunnel
@@ -37,14 +36,12 @@ try:
 except ImportError:
     pexpect = None
 
-from zmq.utils.strtypes import b
-
 
 def select_random_ports(n):
     """Select and return n random ports that are available."""
     ports = []
     sockets = []
-    for i in range(n):
+    for _ in range(n):
         sock = socket.socket()
         sock.bind(("", 0))
         ports.append(sock.getsockname()[1])
@@ -57,7 +54,7 @@ def select_random_ports(n):
 # -----------------------------------------------------------------------------
 # Check for passwordless login
 # -----------------------------------------------------------------------------
-_password_pat = re.compile(b(r"pass(word|phrase):"), re.IGNORECASE)
+_password_pat = re.compile((r"pass(word|phrase):".encode("utf8")), re.IGNORECASE)
 
 
 def try_passwordless_ssh(server, keyfile, paramiko=None):

@@ -15,21 +15,19 @@
 import os
 import sys
 import tempfile
+import textwrap
 import shutil
 import random
 import time
+from io import StringIO
 
 import nose.tools as nt
 import IPython.testing.tools as tt
 
+from unittest import TestCase
+
 from IPython.extensions.autoreload import AutoreloadMagics
 from IPython.core.events import EventManager, pre_run_cell
-from IPython.utils.py3compat import PY3
-
-if PY3:
-    from io import StringIO
-else:
-    from StringIO import StringIO
 
 #-----------------------------------------------------------------------------
 # Test fixture
@@ -37,10 +35,12 @@ else:
 
 noop = lambda *a, **kw: None
 
-class FakeShell(object):
+class FakeShell:
 
     def __init__(self):
         self.ns = {}
+        self.user_ns = self.ns
+        self.user_ns_hidden = {}
         self.events = EventManager(self, {'pre_run_cell', pre_run_cell})
         self.auto_magics = AutoreloadMagics(shell=self)
         self.events.register('pre_run_cell', self.auto_magics.pre_run_cell)
@@ -49,7 +49,7 @@ class FakeShell(object):
 
     def run_code(self, code):
         self.events.trigger('pre_run_cell')
-        exec(code, self.ns)
+        exec(code, self.user_ns)
         self.auto_magics.post_execute_hook()
 
     def push(self, items):
@@ -63,7 +63,7 @@ class FakeShell(object):
         self.auto_magics.post_execute_hook()
 
 
-class Fixture(object):
+class Fixture(TestCase):
     """Fixture for creating test module files"""
 
     test_dir = None
@@ -106,31 +106,152 @@ class Fixture(object):
         (because that is stored in the file).  The only reliable way
         to achieve this seems to be to sleep.
         """
-
+        content = textwrap.dedent(content)
         # Sleep one second + eps
         time.sleep(1.05)
 
         # Write
-        f = open(filename, 'w')
-        try:
+        with open(filename, 'w') as f:
             f.write(content)
-        finally:
-            f.close()
 
     def new_module(self, code):
+        code = textwrap.dedent(code)
         mod_name, mod_fn = self.get_module()
-        f = open(mod_fn, 'w')
-        try:
+        with open(mod_fn, 'w') as f:
             f.write(code)
-        finally:
-            f.close()
         return mod_name, mod_fn
 
 #-----------------------------------------------------------------------------
 # Test automatic reloading
 #-----------------------------------------------------------------------------
 
+def pickle_get_current_class(obj):
+    """
+    Original issue comes from pickle; hence the name.
+    """
+    name = obj.__class__.__name__
+    module_name = getattr(obj, "__module__", None)
+    obj2 = sys.modules[module_name]
+    for subpath in name.split("."):
+        obj2 = getattr(obj2, subpath)
+    return obj2
+
 class TestAutoreload(Fixture):
+
+    def test_reload_enums(self):
+        mod_name, mod_fn = self.new_module(textwrap.dedent("""
+                                from enum import Enum
+                                class MyEnum(Enum):
+                                    A = 'A'
+                                    B = 'B'
+                            """))
+        self.shell.magic_autoreload("2")
+        self.shell.magic_aimport(mod_name)
+        self.write_file(mod_fn, textwrap.dedent("""
+                                from enum import Enum
+                                class MyEnum(Enum):
+                                    A = 'A'
+                                    B = 'B'
+                                    C = 'C'
+                            """))
+        with tt.AssertNotPrints(('[autoreload of %s failed:' % mod_name), channel='stderr'):
+            self.shell.run_code("pass")  # trigger another reload
+
+    def test_reload_class_type(self):
+        self.shell.magic_autoreload("2")
+        mod_name, mod_fn = self.new_module(
+            """
+            class Test():
+                def meth(self):
+                    return "old"
+        """
+        )
+        assert "test" not in self.shell.ns
+        assert "result" not in self.shell.ns
+
+        self.shell.run_code("from %s import Test" % mod_name)
+        self.shell.run_code("test = Test()")
+
+        self.write_file(
+            mod_fn,
+            """
+            class Test():
+                def meth(self):
+                    return "new"
+        """,
+        )
+
+        test_object = self.shell.ns["test"]
+
+        # important to trigger autoreload logic !
+        self.shell.run_code("pass")
+
+        test_class = pickle_get_current_class(test_object)
+        assert isinstance(test_object, test_class)
+
+        # extra check.
+        self.shell.run_code("import pickle")
+        self.shell.run_code("p = pickle.dumps(test)")
+
+    def test_reload_class_attributes(self):
+        self.shell.magic_autoreload("2")
+        mod_name, mod_fn = self.new_module(textwrap.dedent("""
+                                class MyClass:
+
+                                    def __init__(self, a=10):
+                                        self.a = a
+                                        self.b = 22 
+                                        # self.toto = 33
+
+                                    def square(self):
+                                        print('compute square')
+                                        return self.a*self.a
+                            """
+            )
+        )
+        self.shell.run_code("from %s import MyClass" % mod_name)
+        self.shell.run_code("first = MyClass(5)")
+        self.shell.run_code("first.square()")
+        with nt.assert_raises(AttributeError):
+            self.shell.run_code("first.cube()")
+        with nt.assert_raises(AttributeError):
+            self.shell.run_code("first.power(5)")
+        self.shell.run_code("first.b")
+        with nt.assert_raises(AttributeError):
+            self.shell.run_code("first.toto")
+
+        # remove square, add power
+
+        self.write_file(
+            mod_fn,
+            textwrap.dedent(
+                """
+                            class MyClass:
+
+                                def __init__(self, a=10):
+                                    self.a = a
+                                    self.b = 11
+
+                                def power(self, p):
+                                    print('compute power '+str(p))
+                                    return self.a**p
+                            """
+            ),
+        )
+
+        self.shell.run_code("second = MyClass(5)")
+
+        for object_name in {'first', 'second'}:
+            self.shell.run_code("{object_name}.power(5)".format(object_name=object_name))
+            with nt.assert_raises(AttributeError):
+                self.shell.run_code("{object_name}.cube()".format(object_name=object_name))
+            with nt.assert_raises(AttributeError):
+                self.shell.run_code("{object_name}.square()".format(object_name=object_name))
+            self.shell.run_code("{object_name}.b".format(object_name=object_name))
+            self.shell.run_code("{object_name}.a".format(object_name=object_name))
+            with nt.assert_raises(AttributeError):
+                self.shell.run_code("{object_name}.toto".format(object_name=object_name))
+
     def _check_smoketest(self, use_aimport=True):
         """
         Functional test for the automatic reloader using either
@@ -319,3 +440,8 @@ x = -99
 
     def test_smoketest_autoreload(self):
         self._check_smoketest(use_aimport=False)
+
+
+
+
+

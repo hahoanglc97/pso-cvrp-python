@@ -3,12 +3,14 @@
 # Distributed under the terms of the Modified BSD License.
 import hmac
 import os
+import platform
 import uuid
 from datetime import datetime
 from unittest import mock
 
 import pytest
 import zmq
+from tornado import ioloop
 from zmq.eventloop.zmqstream import ZMQStream
 from zmq.tests import BaseZMQTestCase
 
@@ -164,12 +166,14 @@ class TestSession(SessionTestCase):
         self.assertEqual(s.session, u)
         self.assertEqual(s.username, "carrot")
 
+    @pytest.mark.skipif(platform.python_implementation() == 'PyPy', reason='Test fails on PyPy')
     def test_tracking(self):
         """test tracking messages"""
         a, b = self.create_bound_pair(zmq.PAIR, zmq.PAIR)
         s = self.session
         s.copy_threshold = 1
-        ZMQStream(a)
+        loop = ioloop.IOLoop(make_current=False)
+        ZMQStream(a, io_loop=loop)
         msg = s.send(a, "hello", track=False)
         self.assertTrue(msg["tracker"] is ss.DONE)
         msg = s.send(a, "hello", track=True)
@@ -185,7 +189,7 @@ class TestSession(SessionTestCase):
     def test_unique_msg_ids(self):
         """test that messages receive unique ids"""
         ids = set()
-        for i in range(2 ** 12):
+        for i in range(2**12):
             h = self.session.msg_header("test")
             msg_id = h["msg_id"]
             self.assertTrue(msg_id not in ids)

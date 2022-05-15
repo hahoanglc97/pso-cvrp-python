@@ -35,8 +35,8 @@ class TemporaryWorkingDirectory(TemporaryDirectory):
 
 
 class DummyConsoleApp(JupyterApp, JupyterConsoleApp):
-    def initialize(self, argv=[]):
-        JupyterApp.initialize(self, argv=argv)
+    def initialize(self, argv=None):
+        JupyterApp.initialize(self, argv=argv or [])
         self.init_connection_file()
 
 
@@ -84,7 +84,7 @@ def test_write_connection_file():
 
 
 def test_load_connection_file_session():
-    """test load_connection_file() after """
+    """test load_connection_file() after"""
     session = Session()
     app = DummyConsoleApp(session=Session())
     app.initialize(argv=[])
@@ -101,7 +101,7 @@ def test_load_connection_file_session():
 
 
 def test_load_connection_file_session_with_kn():
-    """test load_connection_file() after """
+    """test load_connection_file() after"""
     session = Session()
     app = DummyConsoleApp(session=Session())
     app.initialize(argv=[])

@@ -105,10 +105,22 @@ def test_attrs():
 def test_line_at_cursor():
     cell = ""
     (line, offset) = line_at_cursor(cell, cursor_pos=11)
-    assert line == "", ("Expected '', got %r" % line)
-    assert offset == 0, ("Expected '', got %r" % line)
+    nt.assert_equal(line, "")
+    nt.assert_equal(offset, 0)
 
-def test_muliline_statement():
+    # The position after a newline should be the start of the following line.
+    cell = "One\nTwo\n"
+    (line, offset) = line_at_cursor(cell, cursor_pos=4)
+    nt.assert_equal(line, "Two\n")
+    nt.assert_equal(offset, 4)
+
+    # The end of a cell should be on the last line
+    cell = "pri\npri"
+    (line, offset) = line_at_cursor(cell, cursor_pos=7)
+    nt.assert_equal(line, "pri")
+    nt.assert_equal(offset, 4)
+
+def test_multiline_statement():
     cell = """a = (1,
     3)
 
@@ -116,6 +128,6 @@ int()
 map()
 """
     for c in range(16, 22):
-        yield lambda: expect_token("int", cell, c)
+        yield lambda cell, c: expect_token("int", cell, c), cell, c
     for c in range(22, 28):
-        yield lambda: expect_token("map", cell, c)
+        yield lambda cell, c: expect_token("map", cell, c), cell, c

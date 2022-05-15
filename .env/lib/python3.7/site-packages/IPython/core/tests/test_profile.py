@@ -15,7 +15,6 @@ Authors
 * MinRK
 
 """
-from __future__ import absolute_import
 
 #-----------------------------------------------------------------------------
 # Imports
@@ -35,7 +34,6 @@ from IPython.core.profiledir import ProfileDir
 
 from IPython.testing import decorators as dec
 from IPython.testing import tools as tt
-from IPython.utils import py3compat
 from IPython.utils.process import getoutput
 from IPython.utils.tempdir import TemporaryDirectory
 
@@ -50,7 +48,7 @@ IP_TEST_DIR = os.path.join(HOME_TEST_DIR,'.ipython')
 # Setup/teardown functions/decorators
 #
 
-def setup():
+def setup_module():
     """Setup test environment for the module:
 
             - Adds dummy home dir tree
@@ -60,7 +58,7 @@ def setup():
     os.makedirs(IP_TEST_DIR)
 
 
-def teardown():
+def teardown_module():
     """Teardown test environment for the module:
 
             - Remove dummy home dir tree
@@ -101,15 +99,14 @@ class ProfileStartupTest(TestCase):
             f.write(startup)
         # write simple test file, to check that the startup file was run
         with open(self.fname, 'w') as f:
-            f.write(py3compat.doctest_refactor_print(test))
+            f.write(test)
 
     def validate(self, output):
         tt.ipexec_validate(self.fname, output, '', options=self.options)
 
     @dec.skipif(win32_without_pywin32(), "Test requires pywin32 on Windows")
     def test_startup_py(self):
-        self.init('00-start.py', 'zzz=123\n', 
-                  py3compat.doctest_refactor_print('print zzz\n'))
+        self.init('00-start.py', 'zzz=123\n', 'print(zzz)\n')
         self.validate('123')
 
     @dec.skipif(win32_without_pywin32(), "Test requires pywin32 on Windows")
@@ -122,7 +119,6 @@ def test_list_profiles_in():
     # No need to remove these directories and files, as they will get nuked in
     # the module-level teardown.
     td = tempfile.mkdtemp(dir=TMP_TEST_DIR)
-    td = py3compat.str_to_unicode(td)
     for name in ('profile_foo', 'profile_hello', 'not_a_profile'):
         os.mkdir(os.path.join(td, name))
     if dec.unicode_paths:

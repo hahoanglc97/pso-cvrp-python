@@ -12,7 +12,6 @@
 # Imports
 #-----------------------------------------------------------------------------
 
-from __future__ import with_statement
 
 import os
 import shutil
@@ -29,7 +28,8 @@ import nose.tools as nt
 
 env = os.environ
 TEST_FILE_PATH = split(abspath(__file__))[0]
-TMP_TEST_DIR = tempfile.mkdtemp()
+
+TMP_TEST_DIR = tempfile.mkdtemp(suffix='with.dot')
 #
 # Setup/teardown functions/decorators
 #
@@ -37,11 +37,10 @@ TMP_TEST_DIR = tempfile.mkdtemp()
 old_syspath = sys.path
 
 def make_empty_file(fname):
-    f = open(fname, 'w')
-    f.close()
+    open(fname, 'w').close()
 
 
-def setup():
+def setup_module():
     """Setup testenvironment for the module:
 
     """
@@ -55,7 +54,7 @@ def setup():
     make_empty_file(join(TMP_TEST_DIR, "packpyc.pyc"))
     sys.path = [TMP_TEST_DIR]
 
-def teardown():
+def teardown_module():
     """Teardown testenvironment for the module:
 
             - Remove tempdir
@@ -67,62 +66,49 @@ def teardown():
     shutil.rmtree(TMP_TEST_DIR)
     sys.path = old_syspath
 
-
-def test_get_init_1():
-    """See if get_init can find __init__.py in this testdir"""
-    with make_tempfile(join(TMP_TEST_DIR, "__init__.py")):
-        assert mp.get_init(TMP_TEST_DIR)
-
-def test_get_init_2():
-    """See if get_init can find __init__.pyw in this testdir"""
-    with make_tempfile(join(TMP_TEST_DIR, "__init__.pyw")):
-        assert mp.get_init(TMP_TEST_DIR)
-
-def test_get_init_3():
-    """get_init can't find __init__.pyc in this testdir"""
-    with make_tempfile(join(TMP_TEST_DIR, "__init__.pyc")):
-        nt.assert_is_none(mp.get_init(TMP_TEST_DIR))
-
-def test_get_init_4():
-    """get_init can't find __init__ in empty testdir"""
-    nt.assert_is_none(mp.get_init(TMP_TEST_DIR))
+def test_tempdir():
+    """
+    Ensure the test are done with a temporary file that have a dot somewhere.
+    """
+    nt.assert_in('.',TMP_TEST_DIR)
 
 
 def test_find_mod_1():
+    """
+    Search for a directory's file path.
+    Expected output: a path to that directory's __init__.py file.
+    """
     modpath = join(TMP_TEST_DIR, "xmod", "__init__.py")
     nt.assert_equal(mp.find_mod("xmod"), modpath)
 
 def test_find_mod_2():
+    """
+    Search for a directory's file path.
+    Expected output: a path to that directory's __init__.py file.
+    TODO: Confirm why this is a duplicate test.
+    """
     modpath = join(TMP_TEST_DIR, "xmod", "__init__.py")
     nt.assert_equal(mp.find_mod("xmod"), modpath)
 
 def test_find_mod_3():
+    """
+    Search for a directory + a filename without its .py extension
+    Expected output: full path with .py extension.
+    """
     modpath = join(TMP_TEST_DIR, "xmod", "sub.py")
     nt.assert_equal(mp.find_mod("xmod.sub"), modpath)
 
 def test_find_mod_4():
+    """
+    Search for a filename without its .py extension
+    Expected output: full path with .py extension
+    """
     modpath = join(TMP_TEST_DIR, "pack.py")
     nt.assert_equal(mp.find_mod("pack"), modpath)
 
 def test_find_mod_5():
-    modpath = join(TMP_TEST_DIR, "packpyc.pyc")
-    nt.assert_equal(mp.find_mod("packpyc"), modpath)
-
-def test_find_module_1():
-    modpath = join(TMP_TEST_DIR, "xmod")
-    nt.assert_equal(mp.find_module("xmod"), modpath)
-
-def test_find_module_2():
-    """Testing sys.path that is empty"""
-    nt.assert_is_none(mp.find_module("xmod", []))
-
-def test_find_module_3():
-    """Testing sys.path that is empty"""
-    nt.assert_is_none(mp.find_module(None, None))
-
-def test_find_module_4():
-    """Testing sys.path that is empty"""
-    nt.assert_is_none(mp.find_module(None))
-
-def test_find_module_5():
-    nt.assert_is_none(mp.find_module("xmod.nopack"))
+    """
+    Search for a filename with a .pyc extension
+    Expected output: TODO: do we exclude or include .pyc files?
+    """
+    nt.assert_equal(mp.find_mod("packpyc"), None)

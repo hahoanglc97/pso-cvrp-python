@@ -1,74 +1,108 @@
 """
 User interface Controls for the layout.
 """
-from __future__ import unicode_literals
-
-from abc import ABCMeta, abstractmethod
-from collections import namedtuple
-from six import with_metaclass
-from six.moves import range
-
-from prompt_toolkit.cache import SimpleCache
-from prompt_toolkit.enums import DEFAULT_BUFFER, SEARCH_BUFFER
-from prompt_toolkit.filters import to_cli_filter
-from prompt_toolkit.mouse_events import MouseEventType
-from prompt_toolkit.search_state import SearchState
-from prompt_toolkit.selection import SelectionType
-from prompt_toolkit.token import Token
-from prompt_toolkit.utils import get_cwidth
-
-from .lexers import Lexer, SimpleLexer
-from .processors import Processor
-from .screen import Char, Point
-from .utils import token_list_width, split_lines, token_list_to_text
-
-import six
 import time
-
-
-__all__ = (
-    'BufferControl',
-    'FillControl',
-    'TokenListControl',
-    'UIControl',
-    'UIContent',
+from abc import ABCMeta, abstractmethod
+from typing import (
+    TYPE_CHECKING,
+    Callable,
+    Dict,
+    Hashable,
+    Iterable,
+    List,
+    NamedTuple,
+    Optional,
+    Union,
 )
 
+from prompt_toolkit.application.current import get_app
+from prompt_toolkit.buffer import Buffer
+from prompt_toolkit.cache import SimpleCache
+from prompt_toolkit.data_structures import Point
+from prompt_toolkit.document import Document
+from prompt_toolkit.filters import FilterOrBool, to_filter
+from prompt_toolkit.formatted_text import (
+    AnyFormattedText,
+    StyleAndTextTuples,
+    to_formatted_text,
+)
+from prompt_toolkit.formatted_text.utils import (
+    fragment_list_to_text,
+    fragment_list_width,
+    split_lines,
+)
+from prompt_toolkit.lexers import Lexer, SimpleLexer
+from prompt_toolkit.mouse_events import MouseButton, MouseEvent, MouseEventType
+from prompt_toolkit.search import SearchState
+from prompt_toolkit.selection import SelectionType
+from prompt_toolkit.utils import get_cwidth
 
-class UIControl(with_metaclass(ABCMeta, object)):
+from .processors import (
+    DisplayMultipleCursors,
+    HighlightIncrementalSearchProcessor,
+    HighlightSearchProcessor,
+    HighlightSelectionProcessor,
+    Processor,
+    TransformationInput,
+    merge_processors,
+)
+
+if TYPE_CHECKING:
+    from prompt_toolkit.key_binding.key_bindings import (
+        KeyBindingsBase,
+        NotImplementedOrNone,
+    )
+    from prompt_toolkit.utils import Event
+
+
+__all__ = [
+    "BufferControl",
+    "SearchBufferControl",
+    "DummyControl",
+    "FormattedTextControl",
+    "UIControl",
+    "UIContent",
+]
+
+GetLinePrefixCallable = Callable[[int, int], AnyFormattedText]
+
+
+class UIControl(metaclass=ABCMeta):
     """
     Base class for all user interface controls.
     """
-    def reset(self):
+
+    def reset(self) -> None:
         # Default reset. (Doesn't have to be implemented.)
         pass
 
-    def preferred_width(self, cli, max_available_width):
+    def preferred_width(self, max_available_width: int) -> Optional[int]:
         return None
 
-    def preferred_height(self, cli, width, max_available_height, wrap_lines):
+    def preferred_height(
+        self,
+        width: int,
+        max_available_height: int,
+        wrap_lines: bool,
+        get_line_prefix: Optional[GetLinePrefixCallable],
+    ) -> Optional[int]:
         return None
 
-    def has_focus(self, cli):
+    def is_focusable(self) -> bool:
         """
-        Return ``True`` when this user control has the focus.
-
-        If so, the cursor will be displayed according to the cursor position
-        reported by :meth:`.UIControl.create_content`. If the created content
-        has the property ``show_cursor=False``, the cursor will be hidden from
-        the output.
+        Tell whether this user control is focusable.
         """
         return False
 
     @abstractmethod
-    def create_content(self, cli, width, height):
+    def create_content(self, width: int, height: int) -> "UIContent":
         """
         Generate the content for this user control.
 
         Returns a :class:`.UIContent` instance.
         """
 
-    def mouse_handler(self, cli, mouse_event):
+    def mouse_handler(self, mouse_event: MouseEvent) -> "NotImplementedOrNone":
         """
         Handle mouse events.
 
@@ -76,413 +110,504 @@ class UIControl(with_metaclass(ABCMeta, object)):
         handled by the `UIControl` itself. The `Window` or key bindings can
         decide to handle this event as scrolling or changing focus.
 
-        :param cli: `CommandLineInterface` instance.
         :param mouse_event: `MouseEvent` instance.
         """
         return NotImplemented
 
-    def move_cursor_down(self, cli):
+    def move_cursor_down(self) -> None:
         """
         Request to move the cursor down.
         This happens when scrolling down and the cursor is completely at the
         top.
         """
 
-    def move_cursor_up(self, cli):
+    def move_cursor_up(self) -> None:
         """
         Request to move the cursor up.
         """
 
+    def get_key_bindings(self) -> Optional["KeyBindingsBase"]:
+        """
+        The key bindings that are specific for this user control.
 
-class UIContent(object):
+        Return a :class:`.KeyBindings` object if some key bindings are
+        specified, or `None` otherwise.
+        """
+
+    def get_invalidate_events(self) -> Iterable["Event[object]"]:
+        """
+        Return a list of `Event` objects. This can be a generator.
+        (The application collects all these events, in order to bind redraw
+        handlers to these events.)
+        """
+        return []
+
+
+class UIContent:
     """
     Content generated by a user control. This content consists of a list of
     lines.
 
-    :param get_line: Callable that returns the current line. This is a list of
-        (Token, text) tuples.
+    :param get_line: Callable that takes a line number and returns the current
+        line. This is a list of (style_str, text) tuples.
     :param line_count: The number of lines.
     :param cursor_position: a :class:`.Point` for the cursor position.
     :param menu_position: a :class:`.Point` for the menu position.
     :param show_cursor: Make the cursor visible.
-    :param default_char: The default :class:`.Char` for filling the background.
     """
-    def __init__(self, get_line=None, line_count=0,
-                 cursor_position=None, menu_position=None, show_cursor=True,
-                 default_char=None):
-        assert callable(get_line)
-        assert isinstance(line_count, six.integer_types)
-        assert cursor_position is None or isinstance(cursor_position, Point)
-        assert menu_position is None or isinstance(menu_position, Point)
-        assert default_char is None or isinstance(default_char, Char)
+
+    def __init__(
+        self,
+        get_line: Callable[[int], StyleAndTextTuples] = (lambda i: []),
+        line_count: int = 0,
+        cursor_position: Optional[Point] = None,
+        menu_position: Optional[Point] = None,
+        show_cursor: bool = True,
+    ):
 
         self.get_line = get_line
         self.line_count = line_count
-        self.cursor_position = cursor_position or Point(0, 0)
+        self.cursor_position = cursor_position or Point(x=0, y=0)
         self.menu_position = menu_position
         self.show_cursor = show_cursor
-        self.default_char = default_char
 
-        # Cache for line heights. Maps (lineno, width) -> height.
-        self._line_heights = {}
+        # Cache for line heights. Maps cache key -> height
+        self._line_heights_cache: Dict[Hashable, int] = {}
 
-    def __getitem__(self, lineno):
-        " Make it iterable (iterate line by line). "
+    def __getitem__(self, lineno: int) -> StyleAndTextTuples:
+        "Make it iterable (iterate line by line)."
         if lineno < self.line_count:
             return self.get_line(lineno)
         else:
             raise IndexError
 
-    def get_height_for_line(self, lineno, width):
+    def get_height_for_line(
+        self,
+        lineno: int,
+        width: int,
+        get_line_prefix: Optional[GetLinePrefixCallable],
+        slice_stop: Optional[int] = None,
+    ) -> int:
         """
         Return the height that a given line would need if it is rendered in a
-        space with the given width.
+        space with the given width (using line wrapping).
+
+        :param get_line_prefix: None or a `Window.get_line_prefix` callable
+            that returns the prefix to be inserted before this line.
+        :param slice_stop: Wrap only "line[:slice_stop]" and return that
+            partial result. This is needed for scrolling the window correctly
+            when line wrapping.
+        :returns: The computed height.
         """
+        # Instead of using `get_line_prefix` as key, we use render_counter
+        # instead. This is more reliable, because this function could still be
+        # the same, while the content would change over time.
+        key = get_app().render_counter, lineno, width, slice_stop
+
         try:
-            return self._line_heights[lineno, width]
+            return self._line_heights_cache[key]
         except KeyError:
-            text = token_list_to_text(self.get_line(lineno))
-            result = self.get_height_for_text(text, width)
+            if width == 0:
+                height = 10**8
+            else:
+                # Calculate line width first.
+                line = fragment_list_to_text(self.get_line(lineno))[:slice_stop]
+                text_width = get_cwidth(line)
+
+                if get_line_prefix:
+                    # Add prefix width.
+                    text_width += fragment_list_width(
+                        to_formatted_text(get_line_prefix(lineno, 0))
+                    )
+
+                    # Slower path: compute path when there's a line prefix.
+                    height = 1
+
+                    # Keep wrapping as long as the line doesn't fit.
+                    # Keep adding new prefixes for every wrapped line.
+                    while text_width > width:
+                        height += 1
+                        text_width -= width
+
+                        fragments2 = to_formatted_text(
+                            get_line_prefix(lineno, height - 1)
+                        )
+                        prefix_width = get_cwidth(fragment_list_to_text(fragments2))
+
+                        if prefix_width >= width:  # Prefix doesn't fit.
+                            height = 10**8
+                            break
+
+                        text_width += prefix_width
+                else:
+                    # Fast path: compute height when there's no line prefix.
+                    try:
+                        quotient, remainder = divmod(text_width, width)
+                    except ZeroDivisionError:
+                        height = 10**8
+                    else:
+                        if remainder:
+                            quotient += 1  # Like math.ceil.
+                        height = max(1, quotient)
 
             # Cache and return
-            self._line_heights[lineno, width] = result
-            return result
-
-    @staticmethod
-    def get_height_for_text(text, width):
-        # Get text width for this line.
-        line_width = get_cwidth(text)
-
-        # Calculate height.
-        try:
-            quotient, remainder = divmod(line_width, width)
-        except ZeroDivisionError:
-            # Return something very big.
-            # (This can happen, when the Window gets very small.)
-            return 10 ** 10
-        else:
-            if remainder:
-                quotient += 1  # Like math.ceil.
-            return max(1, quotient)
+            self._line_heights_cache[key] = height
+            return height
 
 
-class TokenListControl(UIControl):
+class FormattedTextControl(UIControl):
     """
-    Control that displays a list of (Token, text) tuples.
+    Control that displays formatted text. This can be either plain text, an
+    :class:`~prompt_toolkit.formatted_text.HTML` object an
+    :class:`~prompt_toolkit.formatted_text.ANSI` object, a list of ``(style_str,
+    text)`` tuples or a callable that takes no argument and returns one of
+    those, depending on how you prefer to do the formatting. See
+    ``prompt_toolkit.layout.formatted_text`` for more information.
+
     (It's mostly optimized for rather small widgets, like toolbars, menus, etc...)
+
+    When this UI control has the focus, the cursor will be shown in the upper
+    left corner of this control by default. There are two ways for specifying
+    the cursor position:
+
+    - Pass a `get_cursor_position` function which returns a `Point` instance
+      with the current cursor position.
+
+    - If the (formatted) text is passed as a list of ``(style, text)`` tuples
+      and there is one that looks like ``('[SetCursorPosition]', '')``, then
+      this will specify the cursor position.
 
     Mouse support:
 
-        The list of tokens can also contain tuples of three items, looking like:
-        (Token, text, handler). When mouse support is enabled and the user
-        clicks on this token, then the given handler is called. That handler
-        should accept two inputs: (CommandLineInterface, MouseEvent) and it
-        should either handle the event or return `NotImplemented` in case we
-        want the containing Window to handle this event.
+        The list of fragments can also contain tuples of three items, looking like:
+        (style_str, text, handler). When mouse support is enabled and the user
+        clicks on this fragment, then the given handler is called. That handler
+        should accept two inputs: (Application, MouseEvent) and it should
+        either handle the event or return `NotImplemented` in case we want the
+        containing Window to handle this event.
 
-    :param get_tokens: Callable that takes a `CommandLineInterface` instance
-        and returns the list of (Token, text) tuples to be displayed right now.
-    :param default_char: default :class:`.Char` (character and Token) to use
-        for the background when there is more space available than `get_tokens`
-        returns.
-    :param get_default_char: Like `default_char`, but this is a callable that
-        takes a :class:`prompt_toolkit.interface.CommandLineInterface` and
-        returns a :class:`.Char` instance.
-    :param has_focus: `bool` or `CLIFilter`, when this evaluates to `True`,
-        this UI control will take the focus. The cursor will be shown in the
-        upper left corner of this control, unless `get_token` returns a
-        ``Token.SetCursorPosition`` token somewhere in the token list, then the
-        cursor will be shown there.
+    :param focusable: `bool` or :class:`.Filter`: Tell whether this control is
+        focusable.
+
+    :param text: Text or formatted text to be displayed.
+    :param style: Style string applied to the content. (If you want to style
+        the whole :class:`~prompt_toolkit.layout.Window`, pass the style to the
+        :class:`~prompt_toolkit.layout.Window` instead.)
+    :param key_bindings: a :class:`.KeyBindings` object.
+    :param get_cursor_position: A callable that returns the cursor position as
+        a `Point` instance.
     """
-    def __init__(self, get_tokens, default_char=None, get_default_char=None,
-                 align_right=False, align_center=False, has_focus=False):
-        assert callable(get_tokens)
-        assert default_char is None or isinstance(default_char, Char)
-        assert get_default_char is None or callable(get_default_char)
-        assert not (default_char and get_default_char)
 
-        self.align_right = to_cli_filter(align_right)
-        self.align_center = to_cli_filter(align_center)
-        self._has_focus_filter = to_cli_filter(has_focus)
+    def __init__(
+        self,
+        text: AnyFormattedText = "",
+        style: str = "",
+        focusable: FilterOrBool = False,
+        key_bindings: Optional["KeyBindingsBase"] = None,
+        show_cursor: bool = True,
+        modal: bool = False,
+        get_cursor_position: Optional[Callable[[], Optional[Point]]] = None,
+    ) -> None:
 
-        self.get_tokens = get_tokens
+        self.text = text  # No type check on 'text'. This is done dynamically.
+        self.style = style
+        self.focusable = to_filter(focusable)
 
-        # Construct `get_default_char` callable.
-        if default_char:
-            get_default_char = lambda _: default_char
-        elif not get_default_char:
-            get_default_char = lambda _: Char(' ', Token.Transparent)
-
-        self.get_default_char = get_default_char
+        # Key bindings.
+        self.key_bindings = key_bindings
+        self.show_cursor = show_cursor
+        self.modal = modal
+        self.get_cursor_position = get_cursor_position
 
         #: Cache for the content.
-        self._content_cache = SimpleCache(maxsize=18)
-        self._token_cache = SimpleCache(maxsize=1)
-            # Only cache one token list. We don't need the previous item.
+        self._content_cache: SimpleCache[Hashable, UIContent] = SimpleCache(maxsize=18)
+        self._fragment_cache: SimpleCache[int, StyleAndTextTuples] = SimpleCache(
+            maxsize=1
+        )
+        # Only cache one fragment list. We don't need the previous item.
 
         # Render info for the mouse support.
-        self._tokens = None
+        self._fragments: Optional[StyleAndTextTuples] = None
 
-    def reset(self):
-        self._tokens = None
+    def reset(self) -> None:
+        self._fragments = None
 
-    def __repr__(self):
-        return '%s(%r)' % (self.__class__.__name__, self.get_tokens)
+    def is_focusable(self) -> bool:
+        return self.focusable()
 
-    def _get_tokens_cached(self, cli):
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}({self.text!r})"
+
+    def _get_formatted_text_cached(self) -> StyleAndTextTuples:
         """
-        Get tokens, but only retrieve tokens once during one render run.
+        Get fragments, but only retrieve fragments once during one render run.
         (This function is called several times during one rendering, because
         we also need those for calculating the dimensions.)
         """
-        return self._token_cache.get(
-            cli.render_counter, lambda: self.get_tokens(cli))
+        return self._fragment_cache.get(
+            get_app().render_counter, lambda: to_formatted_text(self.text, self.style)
+        )
 
-    def has_focus(self, cli):
-        return self._has_focus_filter(cli)
-
-    def preferred_width(self, cli, max_available_width):
+    def preferred_width(self, max_available_width: int) -> int:
         """
         Return the preferred width for this control.
         That is the width of the longest line.
         """
-        text = token_list_to_text(self._get_tokens_cached(cli))
-        line_lengths = [get_cwidth(l) for l in text.split('\n')]
+        text = fragment_list_to_text(self._get_formatted_text_cached())
+        line_lengths = [get_cwidth(l) for l in text.split("\n")]
         return max(line_lengths)
 
-    def preferred_height(self, cli, width, max_available_height, wrap_lines):
-        content = self.create_content(cli, width, None)
-        return content.line_count
-
-    def create_content(self, cli, width, height):
-        # Get tokens
-        tokens_with_mouse_handlers = self._get_tokens_cached(cli)
-
-        default_char = self.get_default_char(cli)
-
-        # Wrap/align right/center parameters.
-        right = self.align_right(cli)
-        center = self.align_center(cli)
-
-        def process_line(line):
-            " Center or right align a single line. "
-            used_width = token_list_width(line)
-            padding = width - used_width
-            if center:
-                padding = int(padding / 2)
-            return [(default_char.token, default_char.char * padding)] + line
-
-        if right or center:
-            token_lines_with_mouse_handlers = []
-
-            for line in split_lines(tokens_with_mouse_handlers):
-                token_lines_with_mouse_handlers.append(process_line(line))
+    def preferred_height(
+        self,
+        width: int,
+        max_available_height: int,
+        wrap_lines: bool,
+        get_line_prefix: Optional[GetLinePrefixCallable],
+    ) -> Optional[int]:
+        """
+        Return the preferred height for this control.
+        """
+        content = self.create_content(width, None)
+        if wrap_lines:
+            height = 0
+            for i in range(content.line_count):
+                height += content.get_height_for_line(i, width, get_line_prefix)
+                if height >= max_available_height:
+                    return max_available_height
+            return height
         else:
-            token_lines_with_mouse_handlers = list(split_lines(tokens_with_mouse_handlers))
+            return content.line_count
 
-        # Strip mouse handlers from tokens.
-        token_lines = [
-            [tuple(item[:2]) for item in line]
-            for line in token_lines_with_mouse_handlers
+    def create_content(self, width: int, height: Optional[int]) -> UIContent:
+        # Get fragments
+        fragments_with_mouse_handlers = self._get_formatted_text_cached()
+        fragment_lines_with_mouse_handlers = list(
+            split_lines(fragments_with_mouse_handlers)
+        )
+
+        # Strip mouse handlers from fragments.
+        fragment_lines: List[StyleAndTextTuples] = [
+            [(item[0], item[1]) for item in line]
+            for line in fragment_lines_with_mouse_handlers
         ]
 
-        # Keep track of the tokens with mouse handler, for later use in
+        # Keep track of the fragments with mouse handler, for later use in
         # `mouse_handler`.
-        self._tokens = tokens_with_mouse_handlers
+        self._fragments = fragments_with_mouse_handlers
 
-        # If there is a `Token.SetCursorPosition` in the token list, set the
+        # If there is a `[SetCursorPosition]` in the fragment list, set the
         # cursor position here.
-        def get_cursor_position():
-            SetCursorPosition = Token.SetCursorPosition
-
-            for y, line in enumerate(token_lines):
+        def get_cursor_position(
+            fragment: str = "[SetCursorPosition]",
+        ) -> Optional[Point]:
+            for y, line in enumerate(fragment_lines):
                 x = 0
-                for token, text in line:
-                    if token == SetCursorPosition:
+                for style_str, text, *_ in line:
+                    if fragment in style_str:
                         return Point(x=x, y=y)
                     x += len(text)
             return None
 
-        # Create content, or take it from the cache.
-        key = (default_char.char, default_char.token,
-                tuple(tokens_with_mouse_handlers), width, right, center)
+        # If there is a `[SetMenuPosition]`, set the menu over here.
+        def get_menu_position() -> Optional[Point]:
+            return get_cursor_position("[SetMenuPosition]")
 
-        def get_content():
-            return UIContent(get_line=lambda i: token_lines[i],
-                             line_count=len(token_lines),
-                             default_char=default_char,
-                             cursor_position=get_cursor_position())
+        cursor_position = (self.get_cursor_position or get_cursor_position)()
+
+        # Create content, or take it from the cache.
+        key = (tuple(fragments_with_mouse_handlers), width, cursor_position)
+
+        def get_content() -> UIContent:
+            return UIContent(
+                get_line=lambda i: fragment_lines[i],
+                line_count=len(fragment_lines),
+                show_cursor=self.show_cursor,
+                cursor_position=cursor_position,
+                menu_position=get_menu_position(),
+            )
 
         return self._content_cache.get(key, get_content)
 
-    @classmethod
-    def static(cls, tokens):
-        def get_static_tokens(cli):
-            return tokens
-        return cls(get_static_tokens)
-
-    def mouse_handler(self, cli, mouse_event):
+    def mouse_handler(self, mouse_event: MouseEvent) -> "NotImplementedOrNone":
         """
         Handle mouse events.
 
-        (When the token list contained mouse handlers and the user clicked on
+        (When the fragment list contained mouse handlers and the user clicked on
         on any of these, the matching handler is called. This handler can still
-        return `NotImplemented` in case we want the `Window` to handle this
-        particular event.)
+        return `NotImplemented` in case we want the
+        :class:`~prompt_toolkit.layout.Window` to handle this particular
+        event.)
         """
-        if self._tokens:
+        if self._fragments:
             # Read the generator.
-            tokens_for_line = list(split_lines(self._tokens))
+            fragments_for_line = list(split_lines(self._fragments))
 
             try:
-                tokens = tokens_for_line[mouse_event.position.y]
+                fragments = fragments_for_line[mouse_event.position.y]
             except IndexError:
                 return NotImplemented
             else:
-                # Find position in the token list.
+                # Find position in the fragment list.
                 xpos = mouse_event.position.x
 
                 # Find mouse handler for this character.
                 count = 0
-                for item in tokens:
+                for item in fragments:
                     count += len(item[1])
-                    if count >= xpos:
+                    if count > xpos:
                         if len(item) >= 3:
                             # Handler found. Call it.
                             # (Handler can return NotImplemented, so return
                             # that result.)
-                            handler = item[2]
-                            return handler(cli, mouse_event)
+                            handler = item[2]  # type: ignore
+                            return handler(mouse_event)
                         else:
                             break
 
         # Otherwise, don't handle here.
         return NotImplemented
 
+    def is_modal(self) -> bool:
+        return self.modal
 
-class FillControl(UIControl):
+    def get_key_bindings(self) -> Optional["KeyBindingsBase"]:
+        return self.key_bindings
+
+
+class DummyControl(UIControl):
     """
-    Fill whole control with characters with this token.
-    (Also helpful for debugging.)
+    A dummy control object that doesn't paint any content.
 
-    :param char: :class:`.Char` instance to use for filling.
-    :param get_char: A callable that takes a CommandLineInterface and returns a
-        :class:`.Char` object.
+    Useful for filling a :class:`~prompt_toolkit.layout.Window`. (The
+    `fragment` and `char` attributes of the `Window` class can be used to
+    define the filling.)
     """
-    def __init__(self, character=None, token=Token, char=None, get_char=None):  # 'character' and 'token' parameters are deprecated.
-        assert char is None or isinstance(char, Char)
-        assert get_char is None or callable(get_char)
-        assert not (char and get_char)
 
-        self.char = char
-
-        if character:
-            # Passing (character=' ', token=token) is deprecated.
-            self.character = character
-            self.token = token
-
-            self.get_char = lambda cli: Char(character, token)
-        elif get_char:
-            # When 'get_char' is given.
-            self.get_char = get_char
-        else:
-            # When 'char' is given.
-            self.char = self.char or Char()
-            self.get_char = lambda cli: self.char
-            self.char = char
-
-    def __repr__(self):
-        if self.char:
-            return '%s(char=%r)' % (self.__class__.__name__, self.char)
-        else:
-            return '%s(get_char=%r)' % (self.__class__.__name__, self.get_char)
-
-    def reset(self):
-        pass
-
-    def has_focus(self, cli):
-        return False
-
-    def create_content(self, cli, width, height):
-        def get_line(i):
+    def create_content(self, width: int, height: int) -> UIContent:
+        def get_line(i: int) -> StyleAndTextTuples:
             return []
 
         return UIContent(
-            get_line=get_line,
-            line_count=100 ** 100,  # Something very big.
-            default_char=self.get_char(cli))
+            get_line=get_line, line_count=100**100
+        )  # Something very big.
+
+    def is_focusable(self) -> bool:
+        return False
 
 
-_ProcessedLine = namedtuple('_ProcessedLine', 'tokens source_to_display display_to_source')
+class _ProcessedLine(NamedTuple):
+    fragments: StyleAndTextTuples
+    source_to_display: Callable[[int], int]
+    display_to_source: Callable[[int], int]
 
 
 class BufferControl(UIControl):
     """
-    Control for visualising the content of a `Buffer`.
+    Control for visualising the content of a :class:`.Buffer`.
 
-    :param input_processors: list of :class:`~prompt_toolkit.layout.processors.Processor`.
-    :param lexer: :class:`~prompt_toolkit.layout.lexers.Lexer` instance for syntax highlighting.
-    :param preview_search: `bool` or `CLIFilter`: Show search while typing.
-    :param get_search_state: Callable that takes a CommandLineInterface and
-        returns the SearchState to be used. (If not CommandLineInterface.search_state.)
-    :param buffer_name: String representing the name of the buffer to display.
-    :param default_char: :class:`.Char` instance to use to fill the background. This is
-        transparent by default.
-    :param focus_on_click: Focus this buffer when it's click, but not yet focussed.
+    :param buffer: The :class:`.Buffer` object to be displayed.
+    :param input_processors: A list of
+        :class:`~prompt_toolkit.layout.processors.Processor` objects.
+    :param include_default_input_processors: When True, include the default
+        processors for highlighting of selection, search and displaying of
+        multiple cursors.
+    :param lexer: :class:`.Lexer` instance for syntax highlighting.
+    :param preview_search: `bool` or :class:`.Filter`: Show search while
+        typing. When this is `True`, probably you want to add a
+        ``HighlightIncrementalSearchProcessor`` as well. Otherwise only the
+        cursor position will move, but the text won't be highlighted.
+    :param focusable: `bool` or :class:`.Filter`: Tell whether this control is focusable.
+    :param focus_on_click: Focus this buffer when it's click, but not yet focused.
+    :param key_bindings: a :class:`.KeyBindings` object.
     """
-    def __init__(self,
-                 buffer_name=DEFAULT_BUFFER,
-                 input_processors=None,
-                 lexer=None,
-                 preview_search=False,
-                 search_buffer_name=SEARCH_BUFFER,
-                 get_search_state=None,
-                 menu_position=None,
-                 default_char=None,
-                 focus_on_click=False):
-        assert input_processors is None or all(isinstance(i, Processor) for i in input_processors)
-        assert menu_position is None or callable(menu_position)
-        assert lexer is None or isinstance(lexer, Lexer)
-        assert get_search_state is None or callable(get_search_state)
-        assert default_char is None or isinstance(default_char, Char)
 
-        self.preview_search = to_cli_filter(preview_search)
-        self.get_search_state = get_search_state
-        self.focus_on_click = to_cli_filter(focus_on_click)
+    def __init__(
+        self,
+        buffer: Optional[Buffer] = None,
+        input_processors: Optional[List[Processor]] = None,
+        include_default_input_processors: bool = True,
+        lexer: Optional[Lexer] = None,
+        preview_search: FilterOrBool = False,
+        focusable: FilterOrBool = True,
+        search_buffer_control: Union[
+            None, "SearchBufferControl", Callable[[], "SearchBufferControl"]
+        ] = None,
+        menu_position: Optional[Callable[[], Optional[int]]] = None,
+        focus_on_click: FilterOrBool = False,
+        key_bindings: Optional["KeyBindingsBase"] = None,
+    ):
 
-        self.input_processors = input_processors or []
-        self.buffer_name = buffer_name
+        self.input_processors = input_processors
+        self.include_default_input_processors = include_default_input_processors
+
+        self.default_input_processors = [
+            HighlightSearchProcessor(),
+            HighlightIncrementalSearchProcessor(),
+            HighlightSelectionProcessor(),
+            DisplayMultipleCursors(),
+        ]
+
+        self.preview_search = to_filter(preview_search)
+        self.focusable = to_filter(focusable)
+        self.focus_on_click = to_filter(focus_on_click)
+
+        self.buffer = buffer or Buffer()
         self.menu_position = menu_position
         self.lexer = lexer or SimpleLexer()
-        self.default_char = default_char or Char(token=Token.Transparent)
-        self.search_buffer_name = search_buffer_name
+        self.key_bindings = key_bindings
+        self._search_buffer_control = search_buffer_control
 
         #: Cache for the lexer.
         #: Often, due to cursor movement, undo/redo and window resizing
         #: operations, it happens that a short time, the same document has to be
-        #: lexed. This is a faily easy way to cache such an expensive operation.
-        self._token_cache = SimpleCache(maxsize=8)
+        #: lexed. This is a fairly easy way to cache such an expensive operation.
+        self._fragment_cache: SimpleCache[
+            Hashable, Callable[[int], StyleAndTextTuples]
+        ] = SimpleCache(maxsize=8)
 
-        self._xy_to_cursor_position = None
-        self._last_click_timestamp = None
-        self._last_get_processed_line = None
+        self._last_click_timestamp: Optional[float] = None
+        self._last_get_processed_line: Optional[Callable[[int], _ProcessedLine]] = None
 
-    def _buffer(self, cli):
+    def __repr__(self) -> str:
+        return f"<{self.__class__.__name__} buffer={self.buffer!r} at {id(self)!r}>"
+
+    @property
+    def search_buffer_control(self) -> Optional["SearchBufferControl"]:
+        result: Optional[SearchBufferControl]
+
+        if callable(self._search_buffer_control):
+            result = self._search_buffer_control()
+        else:
+            result = self._search_buffer_control
+
+        assert result is None or isinstance(result, SearchBufferControl)
+        return result
+
+    @property
+    def search_buffer(self) -> Optional[Buffer]:
+        control = self.search_buffer_control
+        if control is not None:
+            return control.buffer
+        return None
+
+    @property
+    def search_state(self) -> SearchState:
         """
-        The buffer object that contains the 'main' content.
+        Return the `SearchState` for searching this `BufferControl`. This is
+        always associated with the search control. If one search bar is used
+        for searching multiple `BufferControls`, then they share the same
+        `SearchState`.
         """
-        return cli.buffers[self.buffer_name]
+        search_buffer_control = self.search_buffer_control
+        if search_buffer_control:
+            return search_buffer_control.searcher_search_state
+        else:
+            return SearchState()
 
-    def has_focus(self, cli):
-        # This control gets the focussed if the actual `Buffer` instance has the
-        # focus or when any of the `InputProcessor` classes tells us that it
-        # wants the focus. (E.g. in case of a reverse-search, where the actual
-        # search buffer may not be displayed, but the "reverse-i-search" text
-        # should get the focus.)
-        return cli.current_buffer_name == self.buffer_name or \
-            any(i.has_focus(cli) for i in self.input_processors)
+    def is_focusable(self) -> bool:
+        return self.focusable()
 
-    def preferred_width(self, cli, max_available_width):
+    def preferred_width(self, max_available_width: int) -> Optional[int]:
         """
         This should return the preferred width.
 
@@ -495,11 +620,18 @@ class BufferControl(UIControl):
         """
         return None
 
-    def preferred_height(self, cli, width, max_available_height, wrap_lines):
+    def preferred_height(
+        self,
+        width: int,
+        max_available_height: int,
+        wrap_lines: bool,
+        get_line_prefix: Optional[GetLinePrefixCallable],
+    ) -> Optional[int]:
+
         # Calculate the content height, if it was drawn on a screen with the
         # given width.
         height = 0
-        content = self.create_content(cli, width, None)
+        content = self.create_content(width, height=1)  # Pass a dummy '1' as height.
 
         # When line wrapping is off, the height should be equal to the amount
         # of lines.
@@ -512,143 +644,164 @@ class BufferControl(UIControl):
             return max_available_height
 
         for i in range(content.line_count):
-            height += content.get_height_for_line(i, width)
+            height += content.get_height_for_line(i, width, get_line_prefix)
 
             if height >= max_available_height:
                 return max_available_height
 
         return height
 
-    def _get_tokens_for_line_func(self, cli, document):
+    def _get_formatted_text_for_line_func(
+        self, document: Document
+    ) -> Callable[[int], StyleAndTextTuples]:
         """
-        Create a function that returns the tokens for a given line.
+        Create a function that returns the fragments for a given line.
         """
         # Cache using `document.text`.
-        def get_tokens_for_line():
-            return self.lexer.lex_document(cli, document)
+        def get_formatted_text_for_line() -> Callable[[int], StyleAndTextTuples]:
+            return self.lexer.lex_document(document)
 
-        return self._token_cache.get(document.text, get_tokens_for_line)
+        key = (document.text, self.lexer.invalidation_hash())
+        return self._fragment_cache.get(key, get_formatted_text_for_line)
 
-    def _create_get_processed_line_func(self, cli, document):
+    def _create_get_processed_line_func(
+        self, document: Document, width: int, height: int
+    ) -> Callable[[int], _ProcessedLine]:
         """
         Create a function that takes a line number of the current document and
-        returns a _ProcessedLine(processed_tokens, source_to_display, display_to_source)
+        returns a _ProcessedLine(processed_fragments, source_to_display, display_to_source)
         tuple.
         """
-        def transform(lineno, tokens):
-            " Transform the tokens for a given line number. "
-            source_to_display_functions = []
-            display_to_source_functions = []
+        # Merge all input processors together.
+        input_processors = self.input_processors or []
+        if self.include_default_input_processors:
+            input_processors = self.default_input_processors + input_processors
 
+        merged_processor = merge_processors(input_processors)
+
+        def transform(lineno: int, fragments: StyleAndTextTuples) -> _ProcessedLine:
+            "Transform the fragments for a given line number."
             # Get cursor position at this line.
-            if document.cursor_position_row == lineno:
-                cursor_column = document.cursor_position_col
-            else:
-                cursor_column = None
-
-            def source_to_display(i):
-                """ Translate x position from the buffer to the x position in the
-                processed token list. """
-                for f in source_to_display_functions:
-                    i = f(i)
+            def source_to_display(i: int) -> int:
+                """X position from the buffer to the x position in the
+                processed fragment list. By default, we start from the 'identity'
+                operation."""
                 return i
 
-            # Apply each processor.
-            for p in self.input_processors:
-                transformation = p.apply_transformation(
-                    cli, document, lineno, source_to_display, tokens)
-                tokens = transformation.tokens
+            transformation = merged_processor.apply_transformation(
+                TransformationInput(
+                    self, document, lineno, source_to_display, fragments, width, height
+                )
+            )
 
-                if cursor_column:
-                    cursor_column = transformation.source_to_display(cursor_column)
+            return _ProcessedLine(
+                transformation.fragments,
+                transformation.source_to_display,
+                transformation.display_to_source,
+            )
 
-                display_to_source_functions.append(transformation.display_to_source)
-                source_to_display_functions.append(transformation.source_to_display)
+        def create_func() -> Callable[[int], _ProcessedLine]:
+            get_line = self._get_formatted_text_for_line_func(document)
+            cache: Dict[int, _ProcessedLine] = {}
 
-            def display_to_source(i):
-                for f in reversed(display_to_source_functions):
-                    i = f(i)
-                return i
-
-            return _ProcessedLine(tokens, source_to_display, display_to_source)
-
-        def create_func():
-            get_line = self._get_tokens_for_line_func(cli, document)
-            cache = {}
-
-            def get_processed_line(i):
+            def get_processed_line(i: int) -> _ProcessedLine:
                 try:
                     return cache[i]
                 except KeyError:
                     processed_line = transform(i, get_line(i))
                     cache[i] = processed_line
                     return processed_line
+
             return get_processed_line
 
         return create_func()
 
-    def create_content(self, cli, width, height):
+    def create_content(
+        self, width: int, height: int, preview_search: bool = False
+    ) -> UIContent:
         """
         Create a UIContent.
         """
-        buffer = self._buffer(cli)
+        buffer = self.buffer
+
+        # Trigger history loading of the buffer. We do this during the
+        # rendering of the UI here, because it needs to happen when an
+        # `Application` with its event loop is running. During the rendering of
+        # the buffer control is the earliest place we can achieve this, where
+        # we're sure the right event loop is active, and don't require user
+        # interaction (like in a key binding).
+        buffer.load_history_if_not_yet_loaded()
 
         # Get the document to be shown. If we are currently searching (the
         # search buffer has focus, and the preview_search filter is enabled),
         # then use the search document, which has possibly a different
         # text/cursor position.)
-        def preview_now():
-            """ True when we should preview a search. """
-            return bool(self.preview_search(cli) and
-                        cli.buffers[self.search_buffer_name].text)
+        search_control = self.search_buffer_control
+        preview_now = preview_search or bool(
+            # Only if this feature is enabled.
+            self.preview_search()
+            and
+            # And something was typed in the associated search field.
+            search_control
+            and search_control.buffer.text
+            and
+            # And we are searching in this control. (Many controls can point to
+            # the same search field, like in Pyvim.)
+            get_app().layout.search_target_buffer_control == self
+        )
 
-        if preview_now():
-            if self.get_search_state:
-                ss = self.get_search_state(cli)
-            else:
-                ss = cli.search_state
+        if preview_now and search_control is not None:
+            ss = self.search_state
 
-            document = buffer.document_for_search(SearchState(
-                text=cli.current_buffer.text,
-                direction=ss.direction,
-                ignore_case=ss.ignore_case))
+            document = buffer.document_for_search(
+                SearchState(
+                    text=search_control.buffer.text,
+                    direction=ss.direction,
+                    ignore_case=ss.ignore_case,
+                )
+            )
         else:
             document = buffer.document
 
-        get_processed_line = self._create_get_processed_line_func(cli, document)
+        get_processed_line = self._create_get_processed_line_func(
+            document, width, height
+        )
         self._last_get_processed_line = get_processed_line
 
-        def translate_rowcol(row, col):
-            " Return the content column for this coordinate. "
-            return Point(y=row, x=get_processed_line(row).source_to_display(col))
+        def translate_rowcol(row: int, col: int) -> Point:
+            "Return the content column for this coordinate."
+            return Point(x=get_processed_line(row).source_to_display(col), y=row)
 
-        def get_line(i):
-            " Return the tokens for a given line number. "
-            tokens = get_processed_line(i).tokens
+        def get_line(i: int) -> StyleAndTextTuples:
+            "Return the fragments for a given line number."
+            fragments = get_processed_line(i).fragments
 
             # Add a space at the end, because that is a possible cursor
             # position. (When inserting after the input.) We should do this on
             # all the lines, not just the line containing the cursor. (Because
             # otherwise, line wrapping/scrolling could change when moving the
             # cursor around.)
-            tokens = tokens + [(self.default_char.token, ' ')]
-            return tokens
+            fragments = fragments + [("", " ")]
+            return fragments
 
         content = UIContent(
             get_line=get_line,
             line_count=document.line_count,
-            cursor_position=translate_rowcol(document.cursor_position_row,
-                                             document.cursor_position_col),
-            default_char=self.default_char)
+            cursor_position=translate_rowcol(
+                document.cursor_position_row, document.cursor_position_col
+            ),
+        )
 
         # If there is an auto completion going on, use that start point for a
         # pop-up menu position. (But only when this buffer has the focus --
-        # there is only one place for a menu, determined by the focussed buffer.)
-        if cli.current_buffer_name == self.buffer_name:
-            menu_position = self.menu_position(cli) if self.menu_position else None
+        # there is only one place for a menu, determined by the focused buffer.)
+        if get_app().layout.current_control == self:
+            menu_position = self.menu_position() if self.menu_position else None
             if menu_position is not None:
                 assert isinstance(menu_position, int)
-                menu_row, menu_col = buffer.document.translate_index_to_position(menu_position)
+                menu_row, menu_col = buffer.document.translate_index_to_position(
+                    menu_position
+                )
                 content.menu_position = translate_rowcol(menu_row, menu_col)
             elif buffer.complete_state:
                 # Position for completion menu.
@@ -657,23 +810,26 @@ class BufferControl(UIControl):
                 #       some reason shorter than the text we had before. (A completion
                 #       can change and shorten the input.)
                 menu_row, menu_col = buffer.document.translate_index_to_position(
-                    min(buffer.cursor_position,
-                        buffer.complete_state.original_document.cursor_position))
+                    min(
+                        buffer.cursor_position,
+                        buffer.complete_state.original_document.cursor_position,
+                    )
+                )
                 content.menu_position = translate_rowcol(menu_row, menu_col)
             else:
                 content.menu_position = None
 
         return content
 
-    def mouse_handler(self, cli, mouse_event):
+    def mouse_handler(self, mouse_event: MouseEvent) -> "NotImplementedOrNone":
         """
         Mouse handler for this control.
         """
-        buffer = self._buffer(cli)
+        buffer = self.buffer
         position = mouse_event.position
 
         # Focus buffer when clicked.
-        if self.has_focus(cli):
+        if get_app().layout.current_control == self:
             if self._last_get_processed_line:
                 processed_line = self._last_get_processed_line(position.y)
 
@@ -687,6 +843,18 @@ class BufferControl(UIControl):
                     buffer.exit_selection()
                     buffer.cursor_position = index
 
+                elif (
+                    mouse_event.event_type == MouseEventType.MOUSE_MOVE
+                    and mouse_event.button != MouseButton.NONE
+                ):
+                    # Click and drag to highlight a selection
+                    if (
+                        buffer.selection_state is None
+                        and abs(buffer.cursor_position - index) > 0
+                    ):
+                        buffer.start_selection(selection_type=SelectionType.CHARACTERS)
+                    buffer.cursor_position = index
+
                 elif mouse_event.event_type == MouseEventType.MOUSE_UP:
                     # When the cursor was moved to another place, select the text.
                     # (The >1 is actually a small but acceptable workaround for
@@ -694,12 +862,18 @@ class BufferControl(UIControl):
                     # the cursor can never be after the text, so the cursor
                     # will be repositioned automatically.)
                     if abs(buffer.cursor_position - index) > 1:
-                        buffer.start_selection(selection_type=SelectionType.CHARACTERS)
+                        if buffer.selection_state is None:
+                            buffer.start_selection(
+                                selection_type=SelectionType.CHARACTERS
+                            )
                         buffer.cursor_position = index
 
                     # Select word around cursor on double click.
                     # Two MOUSE_UP events in a short timespan are considered a double click.
-                    double_click = self._last_click_timestamp and time.time() - self._last_click_timestamp < .3
+                    double_click = (
+                        self._last_click_timestamp
+                        and time.time() - self._last_click_timestamp < 0.3
+                    )
                     self._last_click_timestamp = time.time()
 
                     if double_click:
@@ -711,20 +885,73 @@ class BufferControl(UIControl):
                     # Don't handle scroll events here.
                     return NotImplemented
 
-        # Not focussed, but focussing on click events.
+        # Not focused, but focusing on click events.
         else:
-            if self.focus_on_click(cli) and mouse_event.event_type == MouseEventType.MOUSE_UP:
+            if (
+                self.focus_on_click()
+                and mouse_event.event_type == MouseEventType.MOUSE_UP
+            ):
                 # Focus happens on mouseup. (If we did this on mousedown, the
                 # up event will be received at the point where this widget is
-                # focussed and be handled anyway.)
-                cli.focus(self.buffer_name)
+                # focused and be handled anyway.)
+                get_app().layout.current_control = self
             else:
                 return NotImplemented
 
-    def move_cursor_down(self, cli):
-        b = self._buffer(cli)
+        return None
+
+    def move_cursor_down(self) -> None:
+        b = self.buffer
         b.cursor_position += b.document.get_cursor_down_position()
 
-    def move_cursor_up(self, cli):
-        b = self._buffer(cli)
+    def move_cursor_up(self) -> None:
+        b = self.buffer
         b.cursor_position += b.document.get_cursor_up_position()
+
+    def get_key_bindings(self) -> Optional["KeyBindingsBase"]:
+        """
+        When additional key bindings are given. Return these.
+        """
+        return self.key_bindings
+
+    def get_invalidate_events(self) -> Iterable["Event[object]"]:
+        """
+        Return the Window invalidate events.
+        """
+        # Whenever the buffer changes, the UI has to be updated.
+        yield self.buffer.on_text_changed
+        yield self.buffer.on_cursor_position_changed
+
+        yield self.buffer.on_completions_changed
+        yield self.buffer.on_suggestion_set
+
+
+class SearchBufferControl(BufferControl):
+    """
+    :class:`.BufferControl` which is used for searching another
+    :class:`.BufferControl`.
+
+    :param ignore_case: Search case insensitive.
+    """
+
+    def __init__(
+        self,
+        buffer: Optional[Buffer] = None,
+        input_processors: Optional[List[Processor]] = None,
+        lexer: Optional[Lexer] = None,
+        focus_on_click: FilterOrBool = False,
+        key_bindings: Optional["KeyBindingsBase"] = None,
+        ignore_case: FilterOrBool = False,
+    ):
+
+        super().__init__(
+            buffer=buffer,
+            input_processors=input_processors,
+            lexer=lexer,
+            focus_on_click=focus_on_click,
+            key_bindings=key_bindings,
+        )
+
+        # If this BufferControl is used as a search field for one or more other
+        # BufferControls, then represents the search state.
+        self.searcher_search_state = SearchState(ignore_case=ignore_case)

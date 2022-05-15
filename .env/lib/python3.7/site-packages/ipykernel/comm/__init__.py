@@ -1,2 +1,2 @@
-from .manager import *
-from .comm import *
+from .comm import *  # noqa
+from .manager import *  # noqa

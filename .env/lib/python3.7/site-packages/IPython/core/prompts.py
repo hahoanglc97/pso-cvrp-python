@@ -2,8 +2,6 @@
 """Being removed
 """
 
-from IPython.utils import py3compat
-
 class LazyEvaluate(object):
     """This is used for formatting strings with values that need to be updated
     at that time, such as the current time or working directory."""
@@ -18,9 +16,6 @@ class LazyEvaluate(object):
 
     def __str__(self):
         return str(self())
-
-    def __unicode__(self):
-        return py3compat.unicode_type(self())
-
+    
     def __format__(self, format_spec):
         return format(self(), format_spec)

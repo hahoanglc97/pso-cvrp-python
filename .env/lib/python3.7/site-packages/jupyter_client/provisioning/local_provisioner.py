@@ -60,6 +60,11 @@ class LocalProvisioner(KernelProvisionerBase):
 
             # Process is no longer alive, wait and clear
             ret = self.process.wait()
+            # Make sure all the fds get closed.
+            for attr in ['stdout', 'stderr', 'stdin']:
+                fid = getattr(self.process, attr)
+                if fid:
+                    fid.close()
             self.process = None  # allow has_process to now return False
         return ret
 
@@ -85,34 +90,54 @@ class LocalProvisioner(KernelProvisionerBase):
                     os.killpg(self.pgid, signum)
                     return
                 except OSError:
-                    pass
-            try:
-                self.process.send_signal(signum)
-            except OSError:
-                pass
+                    pass  # We'll retry sending the signal to only the process below
+
+            # If we're here, send the signal to the process and let caller handle exceptions
+            self.process.send_signal(signum)
             return
 
     async def kill(self, restart: bool = False) -> None:
         if self.process:
+            if hasattr(signal, "SIGKILL"):
+                # If available, give preference to signalling the process-group over `kill()`.
+                try:
+                    await self.send_signal(signal.SIGKILL)
+                    return
+                except OSError:
+                    pass
             try:
                 self.process.kill()
             except OSError as e:
-                # In Windows, we will get an Access Denied error if the process
-                # has already terminated. Ignore it.
-                if sys.platform == 'win32':
-                    if e.winerror != 5:
-                        raise
-                # On Unix, we may get an ESRCH error if the process has already
-                # terminated. Ignore it.
-                else:
-                    from errno import ESRCH
-
-                    if e.errno != ESRCH:
-                        raise
+                LocalProvisioner._tolerate_no_process(e)
 
     async def terminate(self, restart: bool = False) -> None:
         if self.process:
-            return self.process.terminate()
+            if hasattr(signal, "SIGTERM"):
+                # If available, give preference to signalling the process group over `terminate()`.
+                try:
+                    await self.send_signal(signal.SIGTERM)
+                    return
+                except OSError:
+                    pass
+            try:
+                self.process.terminate()
+            except OSError as e:
+                LocalProvisioner._tolerate_no_process(e)
+
+    @staticmethod
+    def _tolerate_no_process(os_error: OSError) -> None:
+        # In Windows, we will get an Access Denied error if the process
+        # has already terminated. Ignore it.
+        if sys.platform == 'win32':
+            if os_error.winerror != 5:
+                raise
+        # On Unix, we may get an ESRCH error (or ProcessLookupError instance) if
+        # the process has already terminated. Ignore it.
+        else:
+            from errno import ESRCH
+
+            if not isinstance(os_error, ProcessLookupError) or os_error.errno != ESRCH:
+                raise
 
     async def cleanup(self, restart: bool = False) -> None:
         if self.ports_cached and not restart:
@@ -180,7 +205,7 @@ class LocalProvisioner(KernelProvisionerBase):
         pgid = None
         if hasattr(os, "getpgid"):
             try:
-                pgid = os.getpgid(self.process.pid)  # type: ignore
+                pgid = os.getpgid(self.process.pid)
             except OSError:
                 pass
 

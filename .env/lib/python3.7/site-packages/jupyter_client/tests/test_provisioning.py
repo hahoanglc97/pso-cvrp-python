@@ -66,6 +66,11 @@ class CustomTestProvisioner(KernelProvisionerBase):
 
             # Process is no longer alive, wait and clear
             ret = self.process.wait()
+            # Make sure all the fds get closed.
+            for attr in ['stdout', 'stderr', 'stdin']:
+                fid = getattr(self.process, attr)
+                if fid:
+                    fid.close()
             self.process = None
         return ret
 
@@ -261,7 +266,7 @@ class TestDiscovery:
 
 class TestRuntime:
     async def akm_test(self, kernel_mgr):
-        """Starts a kernel, validates the associated provisioner's config, shuts down kernel """
+        """Starts a kernel, validates the associated provisioner's config, shuts down kernel"""
 
         assert kernel_mgr.provisioner is None
         if kernel_mgr.kernel_name == 'missing_provisioner':

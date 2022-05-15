@@ -104,9 +104,10 @@ define([
         return {
             'shift'       : 'jupyter-notebook:ignore',
             'shift-enter' : 'jupyter-notebook:run-cell-and-select-next',
-            'ctrl-enter'  : 'jupyter-notebook:run-cell',
             'alt-enter'   : 'jupyter-notebook:run-cell-and-insert-below',
+            'ctrl-enter'  : 'jupyter-notebook:run-cell',
             // cmd on mac, ctrl otherwise
+            'cmdtrl-enter'  : 'jupyter-notebook:run-cell',
             'cmdtrl-s'    : 'jupyter-notebook:save-notebook'
         };
     };
@@ -145,6 +146,7 @@ define([
             'shift-j': 'jupyter-notebook:extend-selection-below',
             'shift-up': 'jupyter-notebook:extend-selection-above',
             'shift-down': 'jupyter-notebook:extend-selection-below',
+            'cmdtrl-a': 'jupyter-notebook:select-all',
             'x' : 'jupyter-notebook:cut-cell',
             'c' : 'jupyter-notebook:copy-cell',
             'v' : 'jupyter-notebook:paste-cell-below',

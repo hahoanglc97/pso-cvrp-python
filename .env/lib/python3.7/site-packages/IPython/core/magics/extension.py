@@ -1,6 +1,5 @@
 """Implementation of magic functions for the extension machinery.
 """
-from __future__ import print_function
 #-----------------------------------------------------------------------------
 #  Copyright (c) 2012 The IPython Development Team.
 #
@@ -13,13 +12,10 @@ from __future__ import print_function
 # Imports
 #-----------------------------------------------------------------------------
 
-# Stdlib
-import os
 
 # Our own packages
 from IPython.core.error import UsageError
 from IPython.core.magic import Magics, magics_class, line_magic
-from  warnings import warn
 
 #-----------------------------------------------------------------------------
 # Magic implementation classes

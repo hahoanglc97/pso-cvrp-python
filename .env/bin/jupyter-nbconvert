@@ -1,4 +1,4 @@
-#!/Users/sonhoang/Project/seminar_1/Final-pso-cvrp/.env/bin/python
+#!/home/hahoang/Project/seminar/pso-cvrp-python/.env/bin/python3.7
 # -*- coding: utf-8 -*-
 import re
 import sys

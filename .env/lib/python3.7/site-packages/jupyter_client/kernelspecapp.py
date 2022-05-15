@@ -4,6 +4,7 @@ import errno
 import json
 import os.path
 import sys
+import typing as t
 
 from jupyter_core.application import base_aliases
 from jupyter_core.application import base_flags
@@ -182,7 +183,7 @@ class RemoveKernelSpec(JupyterApp):
         return KernelSpecManager(data_dir=self.data_dir, parent=self)
 
     flags = {
-        "f": ({"RemoveKernelSpec": {"force": True}}, force.get_metadata("help")),
+        "f": ({"RemoveKernelSpec": {"force": True}}, force.help),
     }
     flags.update(JupyterApp.flags)
 
@@ -309,8 +310,8 @@ class KernelSpecApp(Application):
         }
     )
 
-    aliases = {}
-    flags = {}
+    aliases: t.Dict[str, object] = {}
+    flags: t.Dict[str, object] = {}
 
     def start(self):
         if self.subapp is None:

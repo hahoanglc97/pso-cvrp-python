@@ -1,8 +1,9 @@
 import numpy as np
 import random
+import math
 
 
-# -----------------Function that returns number of customers served by each vehicle------------------------------------------------------------------------------------
+# -----------------Function that returns number of customers served by each vehicle------------------------------------
 def customers_served_by_each_vehicle(customers, vehicle_capacity, demmatrix, cs):  # cs is current solution here
 
     # storing length of current solution
@@ -17,8 +18,8 @@ def customers_served_by_each_vehicle(customers, vehicle_capacity, demmatrix, cs)
         serve = 0
 
         for j in range(sum(served_customers), sc):
-            if demmatrix[
-                cs[j]] + cap > vehicle_capacity:  # if capacity exceeds vehicle's total capacity, get out of loop
+            # if capacity exceeds vehicle's total capacity, get out of loop
+            if demmatrix[cs[j]] + cap > vehicle_capacity:
                 break
             else:
                 serve = serve + 1  # increment of one more customer served
@@ -30,7 +31,7 @@ def customers_served_by_each_vehicle(customers, vehicle_capacity, demmatrix, cs)
     return served_customers
 
 
-# ----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------------------------------
 # Function to return minimum distance covered by all vehicle i.e fitness candidate
 def min_distance_traverse(customers, demmatrix, distmatrix, vehicle_capacity, s):  # s is solution
     size = len(s)
@@ -48,7 +49,7 @@ def min_distance_traverse(customers, demmatrix, distmatrix, vehicle_capacity, s)
     return min_dist_value
 
 
-# --------------------------------------------function that computes total travelled distance by each vehicle-----------------------------------------------------------
+# --------------------------------------------function that computes total travelled distance by each vehicle----------
 def distance_traverse(customers, distmatrix, currentsolution, customer_served_count):
     # setting lb and ub initially to zero,
     lowerbound = upperbound = 0
@@ -82,7 +83,7 @@ def customer_depot_distance(cluster, distmatrix):  # cluster defines the custome
     return current_distance
 
 
-# ----------------------------------------------------------------------------------------------------------------------------------------------------------------------
+# ---------------------------------------------------------------------------------------------------------------------
 
 # function that return customers by sorting the particle's position assigned to them
 def sorting_customers(t1, t2):
@@ -104,13 +105,22 @@ def fitness_value(particleposition, customers, demmatrix, distmatrix, vehicle_ca
 def particle_swarm_optimization(customers, demmatrix, distmatrix, vehicle_capacity, number_of_particles,
                                 number_of_iterations):
     # needed to calculate velocity and position vector
+    # Clerc and Kennedy 2002, constrictor coefficient can be used to prevent velocity "explosion"
+    kappa = 1
+    phi1 = 2.05
+    phi2 = 2.05
+    phi = phi1 + phi2
+    chi = (2*kappa)/(abs(2-phi-math.sqrt(abs(pow(phi, 2)-(4*phi)))))
     # W is inertia constant
-    W = 0.72
+    W = chi
     # C1 is cognitive acceleration constant
-    C1 = 2
+    C1 = chi * phi1
     # C2 is social acceleration constant
-    C2 = 1
+    C2 = chi * phi2
 
+    # W = 1
+    # C1 = 2
+    # C2 = 2
     # creating particle position and velocity vector array
     vector_position_particle = [[] for i in range(number_of_particles)]
     vector_velocity = [[] for i in range(number_of_particles)]
@@ -125,8 +135,8 @@ def particle_swarm_optimization(customers, demmatrix, distmatrix, vehicle_capaci
     # initially the pbest position vector will be the particle position value itself
     pb_position = vector_position_particle
 
-    pb_fitness = [20000000 for i in range(number_of_particles)]  # represents fitness for personal best
-    gb_fitness = 20000000  # represents fitness for global best
+    pb_fitness = [float('inf') for i in range(number_of_particles)]  # represents fitness for personal best
+    gb_fitness = float('inf')  # represents fitness for global best
     # initially it is assigned particle's first position values
     gb_position = vector_position_particle[0]
 
@@ -140,11 +150,11 @@ def particle_swarm_optimization(customers, demmatrix, distmatrix, vehicle_capaci
                                                     vehicle_capacity)
 
             # for setting personal and global best to the minimum fitness candidate value
-            if (pb_fitness[i] > fitness_candidate_value):
+            if pb_fitness[i] > fitness_candidate_value:
                 pb_fitness[i] = fitness_candidate_value
                 pb_position[i] = vector_position_particle[i]
 
-            if (gb_fitness > fitness_candidate_value):
+            if gb_fitness > fitness_candidate_value:
                 gb_fitness = fitness_candidate_value
                 gb_position = vector_position_particle[i]
 
@@ -155,10 +165,11 @@ def particle_swarm_optimization(customers, demmatrix, distmatrix, vehicle_capaci
                                                     gb_position[j] - vector_position_particle[i][j])
                 vector_position_particle[i][j] = vector_velocity[i][j] + vector_position_particle[i][j]
 
-        print("Obtained distance (fitness value) is : ", gb_fitness, "in generation number ", iteration_no + 1)
+        # print("Obtained distance (fitness value) is : ", gb_fitness, "in generation number ", iteration_no + 1)
 
         iteration_no = iteration_no + 1
 
-    particle_stochastic_position = sorting_customers(list(range(1, customers + 1)), gb_position)
+    # particle_stochastic_position = sorting_customers(list(range(1, customers + 1)), gb_position)
 
-    return particle_stochastic_position  # return list of set of vehicles
+    # return particle_stochastic_position  # return list of set of vehicles
+    return gb_fitness

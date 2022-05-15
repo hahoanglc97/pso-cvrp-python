@@ -1,3 +1,27 @@
-import random
-x = random.randrange(-30, 30)
-x = 1
+A-n32-k5
+A-n33-k5
+A-n33-k6
+A-n34-k5
+A-n36-k5
+A-n37-k5
+A-n37-k6
+A-n38-k5
+A-n39-k5
+A-n39-k6
+A-n44-k6
+A-n45-k6
+A-n45-k7
+A-n46-k7
+A-n48-k7
+A-n53-k7
+A-n54-k7
+A-n55-k9
+A-n60-k9
+A-n61-k9
+A-n62-k8
+A-n63-k9
+A-n63-k10
+A-n64-k9
+A-n65-k9
+A-n69-k9
+A-n80-k10

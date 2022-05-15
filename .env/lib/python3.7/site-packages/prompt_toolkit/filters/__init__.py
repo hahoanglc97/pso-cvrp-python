@@ -11,26 +11,58 @@ state of what they are observing. Only when a filter is called (it's actually a
 callable), it will calculate its value. So, its not really reactive
 programming, but it's made to fit for this framework.
 
-One class of filters observe a `CommandLineInterface` instance. However, they
-are not attached to such an instance. (We have to pass this instance to the
-filter when calling it.) The reason for this is to allow declarative
-programming: for key bindings, we can attach a filter to a key binding without
-knowing yet which `CommandLineInterface` instance it will observe in the end.
-Examples are `HasSearch` or `IsExiting`.
-
-Another class of filters doesn't take anything as input. And a third class of
-filters are universal, for instance `Always` and `Never`.
-It is impossible to mix the first and the second class, because that would mean
-mixing filters with a different signature.
-
 Filters can be chained using ``&`` and ``|`` operations, and inverted using the
 ``~`` operator, for instance::
 
-    filter = HasFocus('default') & ~ HasSelection()
+    filter = has_focus('default') & ~ has_selection
 """
-from __future__ import unicode_literals
-
-from .base import *
+from .app import *
+from .base import Always, Condition, Filter, FilterOrBool, Never
 from .cli import *
-from .types import *
-from .utils import *
+from .utils import is_true, to_filter
+
+__all__ = [
+    # app
+    "has_arg",
+    "has_completions",
+    "completion_is_selected",
+    "has_focus",
+    "buffer_has_focus",
+    "has_selection",
+    "has_validation_error",
+    "is_done",
+    "is_read_only",
+    "is_multiline",
+    "renderer_height_is_known",
+    "in_editing_mode",
+    "in_paste_mode",
+    "vi_mode",
+    "vi_navigation_mode",
+    "vi_insert_mode",
+    "vi_insert_multiple_mode",
+    "vi_replace_mode",
+    "vi_selection_mode",
+    "vi_waiting_for_text_object_mode",
+    "vi_digraph_mode",
+    "vi_recording_macro",
+    "emacs_mode",
+    "emacs_insert_mode",
+    "emacs_selection_mode",
+    "shift_selection_mode",
+    "is_searching",
+    "control_is_searchable",
+    "vi_search_direction_reversed",
+    # base.
+    "Filter",
+    "Never",
+    "Always",
+    "Condition",
+    "FilterOrBool",
+    # utils.
+    "is_true",
+    "to_filter",
+]
+
+from .cli import __all__ as cli_all
+
+__all__.extend(cli_all)

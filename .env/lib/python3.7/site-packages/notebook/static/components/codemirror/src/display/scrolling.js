@@ -1,12 +1,12 @@
-import { Pos } from "../line/pos"
-import { cursorCoords, displayHeight, displayWidth, estimateCoords, paddingTop, paddingVert, scrollGap, textHeight } from "../measurement/position_measurement"
-import { gecko, phantom } from "../util/browser"
-import { elt } from "../util/dom"
-import { signalDOMEvent } from "../util/event"
+import { Pos } from "../line/pos.js"
+import { cursorCoords, displayHeight, displayWidth, estimateCoords, paddingTop, paddingVert, scrollGap, textHeight } from "../measurement/position_measurement.js"
+import { gecko, phantom } from "../util/browser.js"
+import { elt } from "../util/dom.js"
+import { signalDOMEvent } from "../util/event.js"
 
-import { startWorker } from "./highlight_worker"
-import { alignHorizontally } from "./line_numbers"
-import { updateDisplaySimple } from "./update_display"
+import { startWorker } from "./highlight_worker.js"
+import { alignHorizontally } from "./line_numbers.js"
+import { updateDisplaySimple } from "./update_display.js"
 
 // SCROLLING THINGS INTO VIEW
 
@@ -165,7 +165,7 @@ export function updateScrollTop(cm, val) {
 }
 
 export function setScrollTop(cm, val, forceScroll) {
-  val = Math.min(cm.display.scroller.scrollHeight - cm.display.scroller.clientHeight, val)
+  val = Math.max(0, Math.min(cm.display.scroller.scrollHeight - cm.display.scroller.clientHeight, val))
   if (cm.display.scroller.scrollTop == val && !forceScroll) return
   cm.doc.scrollTop = val
   cm.display.scrollbars.setScrollTop(val)
@@ -175,7 +175,7 @@ export function setScrollTop(cm, val, forceScroll) {
 // Sync scroller and scrollbar, ensure the gutter elements are
 // aligned.
 export function setScrollLeft(cm, val, isScroller, forceScroll) {
-  val = Math.min(val, cm.display.scroller.scrollWidth - cm.display.scroller.clientWidth)
+  val = Math.max(0, Math.min(val, cm.display.scroller.scrollWidth - cm.display.scroller.clientWidth))
   if ((isScroller ? val == cm.doc.scrollLeft : Math.abs(cm.doc.scrollLeft - val) < 2) && !forceScroll) return
   cm.doc.scrollLeft = val
   alignHorizontally(cm)

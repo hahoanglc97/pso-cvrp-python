@@ -1,6 +1,5 @@
 """Logger class for IPython's logging facilities.
 """
-from __future__ import print_function
 
 #*****************************************************************************
 #       Copyright (C) 2001 Janko Hauser <jhauser@zscout.de> and
@@ -19,7 +18,6 @@ import io
 import os
 import time
 
-from IPython.utils.py3compat import str_to_unicode
 
 #****************************************************************************
 # FIXME: This class isn't a mixin anymore, but it still needs attributes from
@@ -194,8 +192,7 @@ which already exists. But you must first start the logging process with
             write = self.logfile.write
             if kind=='input':
                 if self.timestamp:
-                    write(str_to_unicode(time.strftime('# %a, %d %b %Y %H:%M:%S\n',
-                                        time.localtime())))
+                    write(time.strftime('# %a, %d %b %Y %H:%M:%S\n', time.localtime()))
                 write(data)
             elif kind=='output' and self.log_output:
                 odata = u'\n'.join([u'#[Out]# %s' % s

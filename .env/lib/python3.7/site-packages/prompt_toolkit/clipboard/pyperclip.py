@@ -1,12 +1,14 @@
-from __future__ import absolute_import, unicode_literals
+from typing import Optional
+
 import pyperclip
 
 from prompt_toolkit.selection import SelectionType
+
 from .base import Clipboard, ClipboardData
 
-__all__ = (
-    'PyperclipClipboard',
-)
+__all__ = [
+    "PyperclipClipboard",
+]
 
 
 class PyperclipClipboard(Clipboard):
@@ -14,15 +16,15 @@ class PyperclipClipboard(Clipboard):
     Clipboard that synchronizes with the Windows/Mac/Linux system clipboard,
     using the pyperclip module.
     """
-    def __init__(self):
-        self._data = None
 
-    def set_data(self, data):
-        assert isinstance(data, ClipboardData)
+    def __init__(self) -> None:
+        self._data: Optional[ClipboardData] = None
+
+    def set_data(self, data: ClipboardData) -> None:
         self._data = data
         pyperclip.copy(data.text)
 
-    def get_data(self):
+    def get_data(self) -> ClipboardData:
         text = pyperclip.paste()
 
         # When the clipboard data is equal to what we copied last time, reuse
@@ -36,4 +38,5 @@ class PyperclipClipboard(Clipboard):
         else:
             return ClipboardData(
                 text=text,
-                type=SelectionType.LINES if '\n' in text else SelectionType.LINES)
+                type=SelectionType.LINES if "\n" in text else SelectionType.CHARACTERS,
+            )

@@ -1,6 +1,6 @@
 # encoding: utf-8
 """
-Enable Gtk3 to be used interacive by IPython.
+Enable Gtk3 to be used interactively by IPython.
 
 Authors: Thomi Richards
 """
@@ -29,6 +29,6 @@ def _main_quit(*args, **kwargs):
 
 
 def inputhook_gtk3():
-    GLib.io_add_watch(sys.stdin, GLib.IO_IN, _main_quit)
+    GLib.io_add_watch(sys.stdin, GLib.PRIORITY_DEFAULT, GLib.IO_IN, _main_quit)
     Gtk.main()
     return 0

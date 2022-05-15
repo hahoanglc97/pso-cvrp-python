@@ -13,16 +13,17 @@ This file is only meant to be imported by process.py, not by end-users.
 #-----------------------------------------------------------------------------
 # Imports
 #-----------------------------------------------------------------------------
-from __future__ import print_function
 
 # stdlib
 import os
 import sys
 import ctypes
+import time
 
 from ctypes import c_int, POINTER
 from ctypes.wintypes import LPCWSTR, HLOCAL
-from subprocess import STDOUT
+from subprocess import STDOUT, TimeoutExpired
+from threading import Thread
 
 # our own imports
 from ._process_common import read_no_interrupt, process_handler, arg_split as py_arg_split
@@ -54,7 +55,7 @@ class AvoidUNCPath(object):
             os.system(cmd)
     """
     def __enter__(self):
-        self.path = py3compat.getcwd()
+        self.path = os.getcwd()
         self.is_unc_path = self.path.startswith(r"\\")
         if self.is_unc_path:
             # change to c drive (as cmd.exe cannot handle UNC addresses)
@@ -94,15 +95,29 @@ def _find_cmd(cmd):
 def _system_body(p):
     """Callback for _system."""
     enc = DEFAULT_ENCODING
-    for line in read_no_interrupt(p.stdout).splitlines():
-        line = line.decode(enc, 'replace')
-        print(line, file=sys.stdout)
-    for line in read_no_interrupt(p.stderr).splitlines():
-        line = line.decode(enc, 'replace')
-        print(line, file=sys.stderr)
 
-    # Wait to finish for returncode
-    return p.wait()
+    def stdout_read():
+        for line in read_no_interrupt(p.stdout).splitlines():
+            line = line.decode(enc, 'replace')
+            print(line, file=sys.stdout)
+
+    def stderr_read():
+        for line in read_no_interrupt(p.stderr).splitlines():
+            line = line.decode(enc, 'replace')
+            print(line, file=sys.stderr)
+
+    Thread(target=stdout_read).start()
+    Thread(target=stderr_read).start()
+
+    # Wait to finish for returncode. Unfortunately, Python has a bug where
+    # wait() isn't interruptible (https://bugs.python.org/issue28168) so poll in
+    # a loop instead of just doing `return p.wait()`.
+    while True:
+        result = p.poll()
+        if result is None:
+            time.sleep(0.01)
+        else:
+            return result
 
 
 def system(cmd):
@@ -117,9 +132,7 @@ def system(cmd):
 
     Returns
     -------
-    None : we explicitly do NOT return the subprocess status code, as this
-    utility is meant to be used extensively in IPython, where any return value
-    would trigger :func:`sys.displayhook` calls.
+    int : child process' exit code.
     """
     # The controller provides interactivity with both
     # stdin and stdout
@@ -153,7 +166,7 @@ def getoutput(cmd):
 
     if out is None:
         out = b''
-    return py3compat.bytes_to_str(out)
+    return py3compat.decode(out)
 
 try:
     CommandLineToArgvW = ctypes.windll.shell32.CommandLineToArgvW
@@ -167,7 +180,7 @@ try:
         """Split a command line's arguments in a shell-like manner.
 
         This is a special version for windows that use a ctypes call to CommandLineToArgvW
-        to do the argv splitting. The posix paramter is ignored.
+        to do the argv splitting. The posix parameter is ignored.
         
         If strict=False, process_common.arg_split(...strict=False) is used instead.
         """

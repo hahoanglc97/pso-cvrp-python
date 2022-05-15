@@ -9,15 +9,11 @@ test suite.
 # Copyright (c) IPython Development Team.
 # Distributed under the terms of the Modified BSD License.
 
-from __future__ import print_function
 
 import argparse
-import json
 import multiprocessing.pool
 import os
 import stat
-import re
-import requests
 import shutil
 import signal
 import sys
@@ -26,34 +22,13 @@ import time
 
 from .iptest import (
     have, test_group_names as py_test_group_names, test_sections, StreamCapturer,
-    test_for,
 )
 from IPython.utils.path import compress_user
-from IPython.utils.py3compat import bytes_to_str
+from IPython.utils.py3compat import decode
 from IPython.utils.sysinfo import get_sys_info
 from IPython.utils.tempdir import TemporaryDirectory
-from IPython.utils.text import strip_ansi
 
-try:
-    # Python >= 3.3
-    from subprocess import TimeoutExpired
-    def popen_wait(p, timeout):
-        return p.wait(timeout)
-except ImportError:
-    class TimeoutExpired(Exception):
-        pass
-    def popen_wait(p, timeout):
-        """backport of Popen.wait from Python 3"""
-        for i in range(int(10 * timeout)):
-            if p.poll() is not None:
-                return
-            time.sleep(0.1)
-        if p.poll() is None:
-            raise TimeoutExpired
-
-NOTEBOOK_SHUTDOWN_TIMEOUT = 10
-
-class TestController(object):
+class TestController:
     """Run tests in a subprocess
     """
     #: str, IPython test suite to be executed.
@@ -74,7 +49,7 @@ class TestController(object):
         self.env = {}
         self.dirs = []
 
-    def setup(self):
+    def setUp(self):
         """Create temporary directories etc.
         
         This is only called when we know the test group will be run. Things
@@ -101,18 +76,6 @@ class TestController(object):
         self.stdout_capturer.halt()
         self.stdout = self.stdout_capturer.get_buffer()
         return self.process.returncode
-
-    def print_extra_info(self):
-        """Print extra information about this test run.
-        
-        If we're running in parallel and showing the concise view, this is only
-        called if the test group fails. Otherwise, it's called before the test
-        group is started.
-        
-        The base implementation does nothing, but it can be overridden by
-        subclasses.
-        """
-        return
 
     def cleanup_process(self):
         """Cleanup on exit by killing any leftover processes."""
@@ -268,8 +231,6 @@ def do_run(controller, buffer_output=True):
     try:
         try:
             controller.setup()
-            if not buffer_output:
-                controller.print_extra_info()
             controller.launch(buffer_output=buffer_output)
         except Exception:
             import traceback
@@ -392,8 +353,7 @@ def run_iptestall(options):
                 res_string = 'OK' if res == 0 else 'FAILED'
                 print(justify('Test group: ' + controller.section, res_string))
                 if res:
-                    controller.print_extra_info()
-                    print(bytes_to_str(controller.stdout))
+                    print(decode(controller.stdout))
                     failed.append(controller)
                     if res == -signal.SIGINT:
                         print("Interrupted")
@@ -480,7 +440,6 @@ argparser.add_argument('testgroups', nargs='*',
                     'all tests.')
 argparser.add_argument('--all', action='store_true',
                     help='Include slow tests not run by default.')
-argparser.add_argument('--url', help="URL to use for the JS tests.")
 argparser.add_argument('-j', '--fast', nargs='?', const=None, default=1, type=int,
                     help='Run test sections in parallel. This starts as many '
                     'processes as you have cores, or you can specify a number.')

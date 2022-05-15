@@ -14,15 +14,15 @@ import uuid
 import warnings
 from typing import cast
 
-from jupyter_core.application import base_aliases  # type: ignore
+from jupyter_core.application import base_aliases
 from jupyter_core.application import base_flags
-from traitlets import CBool  # type: ignore
+from traitlets import CBool
 from traitlets import CUnicode
 from traitlets import Dict
 from traitlets import List
 from traitlets import Type
 from traitlets import Unicode
-from traitlets.config.application import boolean_flag  # type: ignore
+from traitlets.config.application import boolean_flag
 
 from . import connect
 from . import find_connection_file
@@ -86,6 +86,7 @@ app_aliases = dict(
     f="JupyterConsoleApp.connection_file",
     kernel="JupyterConsoleApp.kernel_name",
     ssh="JupyterConsoleApp.sshserver",
+    sshkey="JupyterConsoleApp.sshkey",
 )
 aliases.update(app_aliases)
 
@@ -154,7 +155,7 @@ class JupyterConsoleApp(ConnectionFileMixin):
         to force a direct exit without any confirmation.""",
     )
 
-    def build_kernel_argv(self, argv=None) -> None:
+    def build_kernel_argv(self, argv: object = None) -> None:
         """build argv to be passed to kernel subprocess
 
         Override in subclasses if any args should be passed to the kernel
@@ -353,7 +354,7 @@ class JupyterConsoleApp(ConnectionFileMixin):
 
         self.kernel_client.start_channels()
 
-    def initialize(self, argv=None) -> None:
+    def initialize(self, argv: object = None) -> None:
         """
         Classes which mix this class in should call:
                JupyterConsoleApp.initialize(self,argv)

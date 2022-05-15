@@ -12,15 +12,25 @@
 #-----------------------------------------------------------------------------
 # Imports
 #-----------------------------------------------------------------------------
-from __future__ import print_function
 from tempfile import NamedTemporaryFile, mkdtemp
 from os.path import split, join as pjoin, dirname
+import pathlib
+from unittest import TestCase, mock
+import struct
+import wave
+from io import BytesIO
 
 # Third-party imports
 import nose.tools as nt
 
+try:
+    import numpy
+except ImportError:
+    pass
+
 # Our own imports
 from IPython.lib import display
+
 from IPython.testing.decorators import skipif_not_numpy
 
 #-----------------------------------------------------------------------------
@@ -34,9 +44,11 @@ from IPython.testing.decorators import skipif_not_numpy
 def test_instantiation_FileLink():
     """FileLink: Test class can be instantiated"""
     fl = display.FileLink('example.txt')
+    # TODO: remove if when only Python >= 3.6 is supported
+    fl = display.FileLink(pathlib.PurePath('example.txt'))
 
-def test_warning_on_non_existant_path_FileLink():
-    """FileLink: Calling _repr_html_ on non-existant files returns a warning
+def test_warning_on_non_existent_path_FileLink():
+    """FileLink: Calling _repr_html_ on non-existent files returns a warning
     """
     fl = display.FileLink('example.txt')
     nt.assert_true(fl._repr_html_().startswith('Path (<tt>example.txt</tt>)'))
@@ -74,8 +86,8 @@ def test_instantiation_FileLinks():
     """
     fls = display.FileLinks('example')
 
-def test_warning_on_non_existant_path_FileLinks():
-    """FileLinks: Calling _repr_html_ on non-existant files returns a warning
+def test_warning_on_non_existent_path_FileLinks():
+    """FileLinks: Calling _repr_html_ on non-existent files returns a warning
     """
     fls = display.FileLinks('example')
     nt.assert_true(fls._repr_html_().startswith('Path (<tt>example</tt>)'))
@@ -172,7 +184,83 @@ def test_recursive_FileLinks():
     actual = actual.split('\n')
     nt.assert_equal(len(actual), 2, actual)
 
-@skipif_not_numpy
 def test_audio_from_file():
     path = pjoin(dirname(__file__), 'test.wav')
     display.Audio(filename=path)
+
+class TestAudioDataWithNumpy(TestCase):
+
+    @skipif_not_numpy
+    def test_audio_from_numpy_array(self):
+        test_tone = get_test_tone()
+        audio = display.Audio(test_tone, rate=44100)
+        nt.assert_equal(len(read_wav(audio.data)), len(test_tone))
+
+    @skipif_not_numpy
+    def test_audio_from_list(self):
+        test_tone = get_test_tone()
+        audio = display.Audio(list(test_tone), rate=44100)
+        nt.assert_equal(len(read_wav(audio.data)), len(test_tone))
+
+    @skipif_not_numpy
+    def test_audio_from_numpy_array_without_rate_raises(self):
+        nt.assert_raises(ValueError, display.Audio, get_test_tone())
+
+    @skipif_not_numpy
+    def test_audio_data_normalization(self):
+        expected_max_value = numpy.iinfo(numpy.int16).max
+        for scale in [1, 0.5, 2]:
+            audio = display.Audio(get_test_tone(scale), rate=44100)
+            actual_max_value = numpy.max(numpy.abs(read_wav(audio.data)))
+            nt.assert_equal(actual_max_value, expected_max_value)
+
+    @skipif_not_numpy
+    def test_audio_data_without_normalization(self):
+        max_int16 = numpy.iinfo(numpy.int16).max
+        for scale in [1, 0.5, 0.2]:
+            test_tone = get_test_tone(scale)
+            test_tone_max_abs = numpy.max(numpy.abs(test_tone))
+            expected_max_value = int(max_int16 * test_tone_max_abs)
+            audio = display.Audio(test_tone, rate=44100, normalize=False)
+            actual_max_value = numpy.max(numpy.abs(read_wav(audio.data)))
+            nt.assert_equal(actual_max_value, expected_max_value)
+
+    def test_audio_data_without_normalization_raises_for_invalid_data(self):
+        nt.assert_raises(
+            ValueError,
+            lambda: display.Audio([1.001], rate=44100, normalize=False))
+        nt.assert_raises(
+            ValueError,
+            lambda: display.Audio([-1.001], rate=44100, normalize=False))
+
+def simulate_numpy_not_installed():
+    try:
+        import numpy
+        return mock.patch('numpy.array', mock.MagicMock(side_effect=ImportError))
+    except ModuleNotFoundError:
+        return lambda x:x
+
+@simulate_numpy_not_installed()
+class TestAudioDataWithoutNumpy(TestAudioDataWithNumpy):
+    # All tests from `TestAudioDataWithNumpy` are inherited.
+
+    @skipif_not_numpy
+    def test_audio_raises_for_nested_list(self):
+        stereo_signal = [list(get_test_tone())] * 2
+        nt.assert_raises(
+            TypeError,
+            lambda: display.Audio(stereo_signal, rate=44100))
+
+@skipif_not_numpy
+def get_test_tone(scale=1):
+    return numpy.sin(2 * numpy.pi * 440 * numpy.linspace(0, 1, 44100)) * scale
+
+def read_wav(data):
+    with wave.open(BytesIO(data)) as wave_file:
+        wave_data = wave_file.readframes(wave_file.getnframes())
+        num_samples = wave_file.getnframes() * wave_file.getnchannels()
+        return struct.unpack('<%sh' % num_samples, wave_data)
+
+def test_code_from_file():
+    c = display.Code(filename=__file__)
+    assert c._repr_html_().startswith('<style>')

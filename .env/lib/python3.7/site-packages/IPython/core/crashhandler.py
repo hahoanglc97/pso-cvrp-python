@@ -18,7 +18,6 @@ Authors:
 #-----------------------------------------------------------------------------
 # Imports
 #-----------------------------------------------------------------------------
-from __future__ import print_function
 
 import os
 import sys
@@ -28,7 +27,9 @@ from pprint import pformat
 from IPython.core import ultratb
 from IPython.core.release import author_email
 from IPython.utils.sysinfo import sys_info
-from IPython.utils.py3compat import input, getcwd
+from IPython.utils.py3compat import input
+
+from IPython.core.release import __version__ as version
 
 #-----------------------------------------------------------------------------
 # Code
@@ -54,12 +55,22 @@ with the subject '{app_name} Crash Report'.
 If you want to do it now, the following command will work (under Unix):
 mail -s '{app_name} Crash Report' {contact_email} < {crash_report_fname}
 
+In your email, please also include information about:
+- The operating system under which the crash happened: Linux, macOS, Windows,
+  other, and which exact version (for example: Ubuntu 16.04.3, macOS 10.13.2,
+  Windows 10 Pro), and whether it is 32-bit or 64-bit;
+- How {app_name} was installed: using pip or conda, from GitHub, as part of
+  a Docker container, or other, providing more detail if possible;
+- How to reproduce the crash: what exact sequence of instructions can one
+  input to get the same crash? Ideally, find a minimal yet complete sequence
+  of instructions that yields the crash.
+
 To ensure accurate tracking of this issue, please file a report about it at:
 {bug_tracker}
 """
 
 _lite_message_template = """
-If you suspect this is an IPython bug, please report it at:
+If you suspect this is an IPython {version} bug, please report it at:
     https://github.com/ipython/ipython/issues
 or send an email to the mailing list at {email}
 
@@ -140,9 +151,9 @@ class CrashHandler(object):
         try:
             rptdir = self.app.ipython_dir
         except:
-            rptdir = getcwd()
+            rptdir = os.getcwd()
         if rptdir is None or not os.path.isdir(rptdir):
-            rptdir = getcwd()
+            rptdir = os.getcwd()
         report_name = os.path.join(rptdir,self.crash_report_fname)
         # write the report filename into the instance dict so it can get
         # properly expanded out in the user message template
@@ -170,13 +181,14 @@ class CrashHandler(object):
             print('Could not create crash report on disk.', file=sys.stderr)
             return
 
-        # Inform user on stderr of what happened
-        print('\n'+'*'*70+'\n', file=sys.stderr)
-        print(self.message_template.format(**self.info), file=sys.stderr)
+        with report:
+            # Inform user on stderr of what happened
+            print('\n'+'*'*70+'\n', file=sys.stderr)
+            print(self.message_template.format(**self.info), file=sys.stderr)
 
-        # Construct report on disk
-        report.write(self.make_report(traceback))
-        report.close()
+            # Construct report on disk
+            report.write(self.make_report(traceback))
+
         input("Hit <Enter> to quit (your terminal may close):")
 
     def make_report(self,traceback):
@@ -212,5 +224,5 @@ def crash_handler_lite(etype, evalue, tb):
     else:
         # we are not in a shell, show generic config
         config = "c."
-    print(_lite_message_template.format(email=author_email, config=config), file=sys.stderr)
+    print(_lite_message_template.format(email=author_email, config=config, version=version), file=sys.stderr)
 

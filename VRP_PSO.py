@@ -53,35 +53,72 @@ def readdata(name_of_file):
 
 # -------------------------------------[calling dataset function to read values]-----------------------------------------------
 
+f = open("result_P_no.txt", "a")
+list_file_data = ['P-n16-k8',
+'P-n19-k2',
+'P-n20-k2',
+'P-n21-k2',
+'P-n22-k2',
+'P-n22-k8',
+'P-n23-k8',
+'P-n40-k5',
+'P-n45-k5',
+'P-n50-k7',
+'P-n50-k8',
+'P-n50-k10',
+'P-n51-k10',
+'P-n55-k7',
+'P-n55-k10',
+'P-n55-k15',
+'P-n60-k10',
+'P-n60-k15',
+'P-n65-k10',
+'P-n70-k10',
+'P-n76-k4',
+'P-n76-k5',
+'P-n101-k4']
 
-capacity_of_vehicle, total_customers, distance_matrix, demand_matrix, X, Y = readdata('data-test/A/A-n32-k5.vrp')
+for i in list_file_data:
+    capacity_of_vehicle, total_customers, distance_matrix, demand_matrix, X, Y = readdata('data-test/P/' + i + '.vrp')
 
-coordinates_of_customers = [[X[i], Y[i]] for i in range(len(X))]
-print("Coordinates of customer:  ", coordinates_of_customers)
+    coordinates_of_customers = [[X[i], Y[i]] for i in range(len(X))]
+    # print("Coordinates of customer:  ", coordinates_of_customers)
+    #
+    # print("Demand Matrix : ", demand_matrix, "VehicleCapacity : ", capacity_of_vehicle)
+    # print("Distance Matrix: ", distance_matrix)
 
-print("Demand Matrix : ", demand_matrix, "VehicleCapacity : ", capacity_of_vehicle)
-print("Distance Matrix: ", distance_matrix)
+    # number_of_particles = int(input("Enter Number of generations for finding the fitness value on every iteration: "))
+    # number_of_iterations = int(input("Enter Number of generations for finding the fitness value on every iteration: "))
 
-# number_of_particles = int(input("Enter Number of generations for finding the fitness value on every iteration: "))
-# number_of_iterations = int(input("Enter Number of generations for finding the fitness value on every iteration: "))
-
+    list_fitness = [[] for i in range(0, 5)]
+    for j in range(0, 5):
+        list_fitness[j] = PSO.particle_swarm_optimization(total_customers, demand_matrix, distance_matrix,
+                                                          capacity_of_vehicle, 100, 1000)
+    list_fitness.sort()
+    f.write('-------------------------' + i + '------------------------\n')
+    f.write('Best Value: ' + str(list_fitness[0]) + '\n')
+    f.write('Worst Value: ' + str(list_fitness[-1]) + '\n')
+    f.write('Average Value: ' + str(np.mean(list_fitness)) + '\n')
+    f.write('Standard deviation: ' + str(np.std(list_fitness)) + '\n')
+    f.write('\n')
+f.close()
 # Calling PSO
-Sol = PSO.particle_swarm_optimization(total_customers, demand_matrix, distance_matrix, capacity_of_vehicle,
-                                      80, 50000)
+# Sol = PSO.particle_swarm_optimization(total_customers, demand_matrix, distance_matrix, capacity_of_vehicle,
+#                                       80, 50)
 
-customer_count_serve = PSO.customers_served_by_each_vehicle(total_customers, capacity_of_vehicle, demand_matrix, Sol)
+# customer_count_serve = PSO.customers_served_by_each_vehicle(total_customers, capacity_of_vehicle, demand_matrix, Sol)
+#
+# total_required_vehicles = len(customer_count_serve)
 
-total_required_vehicles = len(customer_count_serve)
+# print("required vehicles for the journey : ", total_required_vehicles)
+# Cluster_Customers = []
+# for j in range(total_required_vehicles):
+#     LB = sum(customer_count_serve[0:j])
+#     UB = LB + customer_count_serve[j]
+#     temp = Sol[LB:UB]
+#     Cluster_Customers.append(temp)
 
-print("required vehicles for the journey : ", total_required_vehicles)
-Cluster_Customers = []
-for j in range(total_required_vehicles):
-    LB = sum(customer_count_serve[0:j])
-    UB = LB + customer_count_serve[j]
-    temp = Sol[LB:UB]
-    Cluster_Customers.append(temp)
-
-print("Network Routes of Customer cluster formed vehiclewise: ", Cluster_Customers)
+# print("Network Routes of Customer cluster formed vehiclewise: ", Cluster_Customers)
 
 # Ploting tours for SRC solutions
-plotgr.TourFunction(Cluster_Customers, coordinates_of_customers)
+# plotgr.TourFunction(Cluster_Customers, coordinates_of_customers)

@@ -1,10 +1,11 @@
+from collections import deque
+from typing import Deque, Optional
+
 from .base import Clipboard, ClipboardData
 
-from collections import deque
-
-__all__ = (
-    'InMemoryClipboard',
-)
+__all__ = [
+    "InMemoryClipboard",
+]
 
 
 class InMemoryClipboard(Clipboard):
@@ -14,29 +15,32 @@ class InMemoryClipboard(Clipboard):
 
     This implements a kill-ring, for Emacs mode.
     """
-    def __init__(self, data=None, max_size=60):
-        assert data is None or isinstance(data, ClipboardData)
+
+    def __init__(
+        self, data: Optional[ClipboardData] = None, max_size: int = 60
+    ) -> None:
+
         assert max_size >= 1
 
         self.max_size = max_size
-        self._ring = deque()
+        self._ring: Deque[ClipboardData] = deque()
+
         if data is not None:
             self.set_data(data)
 
-    def set_data(self, data):
-        assert isinstance(data, ClipboardData)
+    def set_data(self, data: ClipboardData) -> None:
         self._ring.appendleft(data)
 
         while len(self._ring) > self.max_size:
             self._ring.pop()
 
-    def get_data(self):
+    def get_data(self) -> ClipboardData:
         if self._ring:
             return self._ring[0]
         else:
             return ClipboardData()
 
-    def rotate(self):
+    def rotate(self) -> None:
         if self._ring:
             # Add the very first item at the end.
             self._ring.append(self._ring.popleft())
